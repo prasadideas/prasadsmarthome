@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
 import '../models/home_model.dart';
 import '../theme_provider.dart';
+import 'mqtt_settings_screen.dart';
 
 class MeTab extends StatefulWidget {
   const MeTab({super.key});
@@ -60,14 +61,10 @@ class _MeTabState extends State<MeTab> {
 
   Future<void> _setThemeMode(ThemeMode mode) async {
     if (!mounted) return;
-    setState(() {
-      _themeMode = mode;
-    });
+    setState(() => _themeMode = mode);
     themeNotifier.value = mode;
     await _firestoreService.setUserThemeMode(uid, _themeModeToString(mode));
   }
-
-  // ── Section header ─────────────────────────────────────────
 
   Widget _sectionHeader(String title) {
     return Padding(
@@ -77,14 +74,12 @@ class _MeTabState extends State<MeTab> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade500,
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
           letterSpacing: 0.8,
         ),
       ),
     );
   }
-
-  // ── Menu tile ──────────────────────────────────────────────
 
   Widget _tile({
     required IconData icon,
@@ -111,6 +106,7 @@ class _MeTabState extends State<MeTab> {
     final user = FirebaseAuth.instance.currentUser;
     final name = _userData?['displayName'] ?? user?.displayName ?? 'User';
     final email = user?.email ?? '';
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Me')),
@@ -121,19 +117,19 @@ class _MeTabState extends State<MeTab> {
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.08),
+              color: cs.primaryContainer,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundColor: Theme.of(context).primaryColor,
+                  backgroundColor: cs.primary,
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
-                      color: Colors.white,
+                      color: cs.onPrimary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -143,21 +139,16 @@ class _MeTabState extends State<MeTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text(name,
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onPrimaryContainer)),
                       const SizedBox(height: 4),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                        ),
-                      ),
+                      Text(email,
+                          style: TextStyle(
+                              color: cs.onPrimaryContainer.withOpacity(0.7),
+                              fontSize: 13)),
                     ],
                   ),
                 ),
@@ -174,32 +165,24 @@ class _MeTabState extends State<MeTab> {
               final homes = snapshot.data ?? [];
               return Column(
                 children: [
-                  // Default home picker
                   _tile(
                     icon: Icons.star_outline,
                     iconColor: Colors.amber,
                     title: 'Default Home',
-                    subtitle:
-                        homes
+                    subtitle: homes
                             .where((h) => h.homeId == _favouriteHomeId)
                             .firstOrNull
                             ?.homeName ??
                         'Not set',
                     onTap: () => _showDefaultHomePicker(homes),
                   ),
-                  // All homes
-                  ...homes.map(
-                    (home) => _tile(
-                      icon: Icons.home_outlined,
-                      iconColor: Colors.blue,
-                      title: home.homeName,
-                      subtitle: home.address,
-                      onTap: () {
-                        // Navigate to home's rooms
-                      },
-                    ),
-                  ),
-                  // Add home
+                  ...homes.map((home) => _tile(
+                        icon: Icons.home_outlined,
+                        iconColor: Colors.blue,
+                        title: home.homeName,
+                        subtitle: home.address,
+                        onTap: () {},
+                      )),
                   _tile(
                     icon: Icons.add_home_outlined,
                     iconColor: Colors.green,
@@ -222,10 +205,28 @@ class _MeTabState extends State<MeTab> {
             subtitle: _themeMode == ThemeMode.light
                 ? 'Light'
                 : _themeMode == ThemeMode.dark
-                ? 'Dark'
-                : 'System',
+                    ? 'Dark'
+                    : 'System',
             onTap: _showThemePicker,
           ),
+
+          // ── MQTT ────────────────────────────────────────────
+          _sectionHeader('Device Connectivity'),
+
+          _tile(
+            icon: Icons.router_outlined,
+            iconColor: Colors.teal,
+            title: 'MQTT Broker Settings',
+            subtitle: 'Configure broker host, port and API key',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const MqttSettingsScreen()),
+            ),
+          ),
+
+          // ── Support / legal ─────────────────────────────────
+          _sectionHeader('App'),
 
           _tile(
             icon: Icons.help_outline,
@@ -261,7 +262,7 @@ class _MeTabState extends State<MeTab> {
             iconColor: Colors.red,
             title: 'Logout',
             trailing: const SizedBox.shrink(),
-            onTap: () => _confirmLogout(),
+            onTap: _confirmLogout,
           ),
 
           const SizedBox(height: 32),
@@ -269,8 +270,6 @@ class _MeTabState extends State<MeTab> {
       ),
     );
   }
-
-  // ── Default home picker ────────────────────────────────────
 
   void _showDefaultHomePicker(List<HomeModel> homes) {
     showModalBottomSheet(
@@ -281,30 +280,27 @@ class _MeTabState extends State<MeTab> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text(
-                'Set Default Home',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: Text('Set Default Home',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
-            ...homes.map(
-              (home) => ListTile(
-                leading: Icon(
-                  home.homeId == _favouriteHomeId
-                      ? Icons.star
-                      : Icons.star_outline,
-                  color: home.homeId == _favouriteHomeId
-                      ? Colors.amber
-                      : Colors.grey,
-                ),
-                title: Text(home.homeName),
-                subtitle: Text(home.address),
-                onTap: () async {
-                  await _firestoreService.setFavouriteHome(uid, home.homeId);
-                  setState(() => _favouriteHomeId = home.homeId);
-                  if (context.mounted) Navigator.pop(context);
-                },
-              ),
-            ),
+            ...homes.map((home) => ListTile(
+                  leading: Icon(
+                    home.homeId == _favouriteHomeId
+                        ? Icons.star
+                        : Icons.star_outline,
+                    color: home.homeId == _favouriteHomeId
+                        ? Colors.amber
+                        : Colors.grey,
+                  ),
+                  title: Text(home.homeName),
+                  subtitle: Text(home.address),
+                  onTap: () async {
+                    await _firestoreService.setFavouriteHome(uid, home.homeId);
+                    setState(() => _favouriteHomeId = home.homeId);
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                )),
             ListTile(
               leading: const Icon(Icons.clear, color: Colors.red),
               title: const Text('Clear default'),
@@ -329,18 +325,17 @@ class _MeTabState extends State<MeTab> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text(
-                'Select Theme',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: Text('Select Theme',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
             RadioListTile<ThemeMode>(
               title: const Text('System Default'),
               value: ThemeMode.system,
               groupValue: _themeMode,
-              onChanged: (value) {
-                if (value != null) {
-                  _setThemeMode(value);
+              onChanged: (v) {
+                if (v != null) {
+                  _setThemeMode(v);
                   Navigator.pop(context);
                 }
               },
@@ -349,9 +344,9 @@ class _MeTabState extends State<MeTab> {
               title: const Text('Light'),
               value: ThemeMode.light,
               groupValue: _themeMode,
-              onChanged: (value) {
-                if (value != null) {
-                  _setThemeMode(value);
+              onChanged: (v) {
+                if (v != null) {
+                  _setThemeMode(v);
                   Navigator.pop(context);
                 }
               },
@@ -360,9 +355,9 @@ class _MeTabState extends State<MeTab> {
               title: const Text('Dark'),
               value: ThemeMode.dark,
               groupValue: _themeMode,
-              onChanged: (value) {
-                if (value != null) {
-                  _setThemeMode(value);
+              onChanged: (v) {
+                if (v != null) {
+                  _setThemeMode(v);
                   Navigator.pop(context);
                 }
               },
@@ -373,8 +368,6 @@ class _MeTabState extends State<MeTab> {
     );
   }
 
-  // ── Add home dialog ────────────────────────────────────────
-
   void _showAddHomeDialog() {
     final nameController = TextEditingController();
     final addressController = TextEditingController();
@@ -384,8 +377,7 @@ class _MeTabState extends State<MeTab> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Padding(
         padding: EdgeInsets.only(
           left: 24,
@@ -399,17 +391,14 @@ class _MeTabState extends State<MeTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Add New Home',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('Add New Home',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               TextFormField(
                 controller: nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Home name',
-                  border: OutlineInputBorder(),
-                ),
+                    labelText: 'Home name', border: OutlineInputBorder()),
                 validator: (v) =>
                     v == null || v.isEmpty ? 'Enter a home name' : null,
               ),
@@ -417,9 +406,7 @@ class _MeTabState extends State<MeTab> {
               TextFormField(
                 controller: addressController,
                 decoration: const InputDecoration(
-                  labelText: 'Address',
-                  border: OutlineInputBorder(),
-                ),
+                    labelText: 'Address', border: OutlineInputBorder()),
                 validator: (v) =>
                     v == null || v.isEmpty ? 'Enter an address' : null,
               ),
@@ -450,8 +437,6 @@ class _MeTabState extends State<MeTab> {
     );
   }
 
-  // ── Logout confirmation ────────────────────────────────────
-
   void _confirmLogout() {
     showDialog(
       context: context,
@@ -460,9 +445,8 @@ class _MeTabState extends State<MeTab> {
         content: const Text('Are you sure you want to logout?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);

@@ -102,15 +102,11 @@ class _HomeTabState extends State<HomeTab> {
             children: [
               const Icon(Icons.home_outlined, size: 64, color: Colors.grey),
               const SizedBox(height: 16),
-              const Text(
-                'No homes added yet',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
-              ),
+              const Text('No homes added yet',
+                  style: TextStyle(fontSize: 18, color: Colors.grey)),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
-                  // Switch to Me tab to add a home
-                },
+                onPressed: () {},
                 child: const Text('Go to Me tab to add a home'),
               ),
             ],
@@ -126,7 +122,8 @@ class _HomeTabState extends State<HomeTab> {
           builder: (context, snapshot) {
             final homes = snapshot.data ?? [];
             return GestureDetector(
-              onTap: homes.length > 1 ? () => _showSwitchHomeMenu(homes) : null,
+              onTap:
+                  homes.length > 1 ? () => _showSwitchHomeMenu(homes) : null,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -144,60 +141,42 @@ class _HomeTabState extends State<HomeTab> {
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'add_room') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RoomsScreen(home: _activeHome!),
-                  ),
-                );
+                Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => RoomsScreen(home: _activeHome!)));
               } else if (value == 'add_device') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddDeviceScreen(home: _activeHome!),
-                  ),
-                );
+                Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => AddDeviceScreen(home: _activeHome!)));
               } else if (value == 'all_devices') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
+                Navigator.push(context, MaterialPageRoute(
                     builder: (_) =>
-                        DevicesScreen(home: _activeHome!, room: null),
-                  ),
-                );
+                        DevicesScreen(home: _activeHome!, room: null)));
               }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'add_room',
-                child: Row(
-                  children: [
-                    Icon(Icons.meeting_room_outlined),
-                    SizedBox(width: 12),
-                    Text('Add Room'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.meeting_room_outlined),
+                  SizedBox(width: 12),
+                  Text('Add Room'),
+                ]),
               ),
               const PopupMenuItem(
                 value: 'add_device',
-                child: Row(
-                  children: [
-                    Icon(Icons.devices_outlined),
-                    SizedBox(width: 12),
-                    Text('Add Device'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.devices_outlined),
+                  SizedBox(width: 12),
+                  Text('Add Device'),
+                ]),
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'all_devices',
-                child: Row(
-                  children: [
-                    Icon(Icons.list_outlined),
-                    SizedBox(width: 12),
-                    Text('All Devices'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.list_outlined),
+                  SizedBox(width: 12),
+                  Text('All Devices'),
+                ]),
               ),
             ],
           ),
@@ -217,28 +196,34 @@ class _HomeTabState extends State<HomeTab> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.meeting_room_outlined,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
+                  Icon(Icons.meeting_room_outlined,
+                      size: 64,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.3)),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No rooms yet',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
+                  Text('No rooms yet',
+                      style: TextStyle(
+                          fontSize: 18,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.5))),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Tap ⋮ to add your first room',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  Text('Tap ⋮ to add your first room',
+                      style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.4))),
                 ],
               ),
             );
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: rooms.length,
             itemBuilder: (context, index) {
               final room = rooms[index];
@@ -256,7 +241,7 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
-// ── Room card with switch state dots ──────────────────────
+// ── Attractive Room Card ───────────────────────────────────────
 
 class _RoomCard extends StatelessWidget {
   final RoomModel room;
@@ -271,144 +256,266 @@ class _RoomCard extends StatelessWidget {
     required this.firestoreService,
   });
 
+  // Map room icon string to actual IconData
+  IconData _roomIcon() {
+    const iconMap = {
+      'Living Room': Icons.weekend,
+      'Bedroom': Icons.bed,
+      'Kitchen': Icons.kitchen,
+      'Bathroom': Icons.bathtub,
+      'Office': Icons.computer,
+      'Garage': Icons.garage,
+      'Garden': Icons.yard,
+      'Other': Icons.room,
+    };
+    return iconMap[room.icon] ?? Icons.meeting_room_outlined;
+  }
+
   Future<void> _confirmTurnOffAll(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Turn off all switches'),
         content: const Text(
-          'Are you sure you want to turn off all switches in this room?',
-        ),
+            'Are you sure you want to turn off all switches in this room?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Turn off', style: TextStyle(color: Colors.red)),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Turn off',
+                  style: TextStyle(color: Colors.red))),
         ],
       ),
     );
-
     if (confirmed != true) return;
-
     try {
       await firestoreService.setRoomAllSwitchesOff(uid, room.roomId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All switches have been turned off.')),
-        );
+            const SnackBar(
+                content: Text('All switches have been turned off.')));
       }
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to turn off all switches.')),
-        );
+            const SnackBar(
+                content: Text('Failed to turn off all switches.')));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => DevicesScreen(home: home, room: room),
+    final cs = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Material(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(20),
+        elevation: 0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => DevicesScreen(home: home, room: room)),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Room header
-              ListTile(
-                leading: Icon(
-                  Icons.meeting_room_outlined,
-                  color: Theme.of(context).primaryColor,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: cs.outlineVariant, width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header bar ───────────────────────────────
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20)),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(_roomIcon(),
+                            color: cs.primary, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          room.roomName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                      // Turn-off-all button
+                      IconButton(
+                        icon: const Icon(Icons.power_settings_new,
+                            size: 20),
+                        color: cs.error,
+                        tooltip: 'Turn off all',
+                        onPressed: () => _confirmTurnOffAll(context),
+                      ),
+                      // Arrow
+                      Icon(Icons.chevron_right,
+                          color: cs.onPrimaryContainer.withOpacity(0.5)),
+                    ],
+                  ),
                 ),
-                title: Text(
-                  room.roomName,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.power_settings_new),
-                  tooltip: 'Turn off all switches',
-                  color: Colors.redAccent,
-                  onPressed: () => _confirmTurnOffAll(context),
-                ),
-              ),
 
-              const Divider(height: 0),
+                // ── Device switch dots ───────────────────────
+                StreamBuilder<List<DeviceModel>>(
+                  stream: firestoreService.streamDevices(uid),
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(
+                            child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2))),
+                      );
+                    }
 
-              // Switch state dots
-              StreamBuilder<List<DeviceModel>>(
-                stream: firestoreService.streamDevices(uid),
-                builder: (context, snap) {
-                  if (!snap.hasData) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
+                    final devices = snap.data!
+                        .where((d) => d.linkedRoom == room.roomId)
+                        .toList();
 
-                  final devices = snap.data!
-                      .where((d) => d.linkedRoom == room.roomId)
-                      .toList();
+                    if (devices.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        child: Text('No devices yet',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface.withOpacity(0.4))),
+                      );
+                    }
 
-                  if (devices.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'No devices in this room',
-                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                    // Count ON switches across all devices
+                    final allSwitches = devices
+                        .expand((d) => d.switches)
+                        .toList();
+                    final onCount =
+                        allSwitches.where((s) => s.isOn).length;
+
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Summary line
+                          Row(
+                            children: [
+                              Icon(Icons.circle,
+                                  size: 8,
+                                  color: onCount > 0
+                                      ? cs.primary
+                                      : cs.onSurface.withOpacity(0.3)),
+                              const SizedBox(width: 6),
+                              Text(
+                                onCount > 0
+                                    ? '$onCount of ${allSwitches.length} switches on'
+                                    : 'All switches off',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: onCount > 0
+                                      ? cs.primary
+                                      : cs.onSurface.withOpacity(0.45),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Per-device grouped dots
+                          ...devices.map((device) =>
+                              _DeviceDotRow(device: device, cs: cs)),
+                        ],
                       ),
                     );
-                  }
-
-                  final allSwitches = devices.expand((d) => d.switches).toList();
-
-                  return Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: allSwitches.map((sw) {
-                        return Tooltip(
-                          message: sw.label,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: sw.isOn
-                                  ? Theme.of(context).primaryColor
-                                  : Colors.grey.shade300,
-                              border: Border.all(
-                                color: sw.isOn
-                                    ? Theme.of(context).primaryColor
-                                    : Colors.grey.shade400,
-                                width: 0.5,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  );
-                },
-              ),
-            ],
+                  },
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Per-device dot row (change 2: dots grouped per device) ────
+
+class _DeviceDotRow extends StatelessWidget {
+  final DeviceModel device;
+  final ColorScheme cs;
+
+  const _DeviceDotRow({required this.device, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Device name label
+          SizedBox(
+            width: 90,
+            child: Text(
+              device.deviceName,
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurface.withOpacity(0.55),
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Dots for each switch in this device
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: device.switches.map((sw) {
+              final isOn = sw.isOn;
+              return Tooltip(
+                message: sw.label,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isOn ? cs.primary : Colors.transparent,
+                    border: Border.all(
+                      color: isOn
+                          ? cs.primary
+                          : cs.onSurface.withOpacity(0.25),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
