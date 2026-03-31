@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "686608903926",
+    "project_id": "smarthomev-7b2ca",
+    "storage_bucket": "smarthomev-7b2ca.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686608903926:android:4da0e07b634858cf9586d7",
+        "android_client_info": {
+          "package_name": "com.example.prasadsmarthome"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "686608903926-99ke9lgj7ispcbdk8faqitfipujm3r1t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0oSlVlixFnwEWbsHjQTIw06U7197AqcI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "686608903926-99ke9lgj7ispcbdk8faqitfipujm3r1t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686608903926:android:07f001b0fca83c879586d7",
+        "android_client_info": {
+          "package_name": "com.example.smarthome_v"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "686608903926-99ke9lgj7ispcbdk8faqitfipujm3r1t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0oSlVlixFnwEWbsHjQTIw06U7197AqcI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "686608903926-99ke9lgj7ispcbdk8faqitfipujm3r1t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
