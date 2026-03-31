@@ -16,16 +16,32 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
   bool _useTls = false;
   bool _connecting = false;
   String? _statusMessage;
+  String? _initializationError;
 
   @override
   void initState() {
     super.initState();
-    final mqtt = MqttProvider.read(context);
-    _hostController = TextEditingController(text: mqtt.brokerHost);
-    _portController =
-        TextEditingController(text: mqtt.brokerPort.toString());
-    _apiKeyController = TextEditingController(text: mqtt.apiKey);
-    _useTls = mqtt.useTls;
+    // Initialize with defaults immediately
+    _hostController = TextEditingController(text: 'test.mosquitto.org'); // Reliable public broker
+    _portController = TextEditingController(text: '1883');
+    _apiKeyController = TextEditingController(text: 'smarthome_default_key');
+    
+    // Load actual values after first frame to ensure provider is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final mqtt = MqttProvider.read(context);
+        _hostController.text = mqtt.brokerHost;
+        _portController.text = mqtt.brokerPort.toString();
+        _apiKeyController.text = mqtt.apiKey;
+        _useTls = mqtt.useTls;
+        setState(() {});
+      } catch (e) {
+        setState(() {
+          _initializationError = e.toString();
+        });
+        debugPrint('[MQTT Settings] Initialization error: $e');
+      }
+    });
   }
 
   @override
@@ -42,7 +58,7 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
     // Apply settings
     mqtt.brokerHost = _hostController.text.trim();
     mqtt.brokerPort = int.tryParse(_portController.text.trim()) ?? 1883;
-    mqtt.apiKey = _apiKeyController.text.trim();
+    mqtt.apiKey = _apiKeyController.text.trim().isEmpty ? 'smarthome_default_key' : _apiKeyController.text.trim();
     mqtt.useTls = _useTls;
 
     setState(() {
@@ -70,28 +86,126 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
     }
   }
 
+  Future<void> _testConnection() async {
+    final mqtt = MqttProvider.read(context);
+
+    // Use minimal test settings
+    final originalHost = mqtt.brokerHost;
+    final originalPort = mqtt.brokerPort;
+    final originalApiKey = mqtt.apiKey;
+    final originalTls = mqtt.useTls;
+
+    // Test with known working public broker
+    mqtt.brokerHost = 'test.mosquitto.org';
+    mqtt.brokerPort = 1883;
+    mqtt.apiKey = 'test_key';
+    mqtt.useTls = false;
+
+    setState(() {
+      _connecting = true;
+      _statusMessage = 'Testing connection to test.mosquitto.org...';
+    });
+
+    final ok = await mqtt.connect();
+
+    // Restore original settings
+    mqtt.brokerHost = originalHost;
+    mqtt.brokerPort = originalPort;
+    mqtt.apiKey = originalApiKey;
+    mqtt.useTls = originalTls;
+
+    if (mounted) {
+      setState(() {
+        _connecting = false;
+        _statusMessage = ok
+            ? '✓ Test successful! Broker is reachable.'
+            : '✗ Test failed. Check network or try different broker.';
+      });
+    }
+  }
+
+  void _showConnectionHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connection Troubleshooting'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Try these public MQTT brokers:'),
+            SizedBox(height: 8),
+            Text('• TCP: test.mosquitto.org:1883'),
+            Text('• TCP: broker.emqx.io:1883'),
+            Text('• WebSocket: broker.emqx.io:8083 (recommended for emulators)'),
+            Text('• WebSocket: test.mosquitto.org:8080'),
+            SizedBox(height: 12),
+            Text('For secure connections:'),
+            Text('• TCP TLS: test.mosquitto.org:8883'),
+            Text('• WebSocket TLS: broker.emqx.io:8084'),
+            SizedBox(height: 12),
+            Text('API Key is optional for public brokers.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mqtt = MqttProvider.of(context); // rebuild on connection change
-    final cs = Theme.of(context).colorScheme;
+    // If initialization error occurred, show error message
+    if (_initializationError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('MQTT Settings')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
+                const SizedBox(height: 16),
+                const Text('Error loading MQTT settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(_initializationError ?? 'Unknown error', style: const TextStyle(fontSize: 14), textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('MQTT Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          // Connection status card
-          Card(
-            color: mqtt.isConnected
-                ? Colors.green.withOpacity(0.12)
-                : cs.errorContainer.withOpacity(0.3),
-            child: ListTile(
-              leading: Icon(
-                mqtt.isConnected
-                    ? Icons.wifi
-                    : Icons.wifi_off,
-                color: mqtt.isConnected ? Colors.green : cs.error,
-              ),
+    return _buildContent(context);
+  }
+
+  Widget _buildContent(BuildContext context) {
+    try {
+      final mqtt = MqttProvider.of(context); // rebuild on connection change
+      final cs = Theme.of(context).colorScheme;
+
+      return Scaffold(
+        appBar: AppBar(title: const Text('MQTT Settings')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            // Connection status card
+            Card(
+              color: mqtt.isConnected
+                  ? Colors.green.withOpacity(0.12)
+                  : cs.errorContainer.withOpacity(0.3),
+              child: ListTile(
+                leading: Icon(
+                  mqtt.isConnected
+                      ? Icons.wifi
+                      : Icons.wifi_off,
+                  color: mqtt.isConnected ? Colors.green : cs.error,
+                ),
               title: Text(
                 mqtt.isConnected ? 'Connected' : 'Disconnected',
                 style: TextStyle(
@@ -102,6 +216,11 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
               subtitle: mqtt.isConnected
                   ? Text('${mqtt.brokerHost}:${mqtt.brokerPort}')
                   : const Text('Not connected to any broker'),
+              trailing: mqtt.isConnected ? null : IconButton(
+                icon: const Icon(Icons.info_outline),
+                onPressed: () => _showConnectionHelp(context),
+                tooltip: 'Connection help',
+              ),
             ),
           ),
 
@@ -155,12 +274,12 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
           TextFormField(
             controller: _apiKeyController,
             decoration: const InputDecoration(
-              labelText: 'API Key',
-              hintText: 'my_secret_api_key',
+              labelText: 'API Key (optional for public brokers)',
+              hintText: 'smarthome_default_key',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.vpn_key_outlined),
               helperText:
-                  'Used in topic path and as MQTT password for authentication',
+                  'Used in topic path. Leave empty for public brokers.',
             ),
           ),
 
@@ -233,6 +352,16 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14)),
                 ),
               ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _connecting ? null : _testConnection,
+                icon: const Icon(Icons.science),
+                tooltip: 'Test connection with minimal settings',
+                style: IconButton.styleFrom(
+                  backgroundColor: cs.primaryContainer,
+                  foregroundColor: cs.onPrimaryContainer,
+                ),
+              ),
               if (mqtt.isConnected) ...[
                 const SizedBox(width: 12),
                 Expanded(
@@ -251,6 +380,15 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
           ),
         ],
       ),
-    );
+      );
+    } catch (e) {
+      debugPrint('[MQTT Settings Build Error] $e');
+      return Scaffold(
+        appBar: AppBar(title: const Text('MQTT Settings')),
+        body: Center(
+          child: Text('Error: $e'),
+        ),
+      );
+    }
   }
 }

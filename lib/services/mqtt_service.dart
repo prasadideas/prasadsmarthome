@@ -80,7 +80,7 @@ class MqttService extends ChangeNotifier {
   Stream<Map<SwitchKey, SwitchState>> get stateStream => _stateController.stream;
 
   MqttService({
-    this.brokerHost = 'broker.emqx.io',
+    this.brokerHost = 'broker.hivemq.com', // More reliable public broker
     this.brokerPort = 1883,
     this.apiKey = 'smarthome_default_key',
     this.useTls = false,
@@ -109,9 +109,10 @@ class MqttService extends ChangeNotifier {
 
     final clientId = 'smarthome_app_${DateTime.now().millisecondsSinceEpoch}';
     _client = MqttServerClient.withPort(brokerHost, clientId, brokerPort);
-    _client!.logging(on: false);
+    _client!.logging(on: true); // Enable detailed logging
     _client!.keepAlivePeriod = 30;
     _client!.autoReconnect = true;
+    _client!.connectTimeoutPeriod = 10000; // 10 second timeout
     _client!.onDisconnected = _onDisconnected;
     _client!.onConnected = _onConnected;
     _client!.onAutoReconnect = () => debugPrint('[MQTT] Auto-reconnecting...');
@@ -123,24 +124,38 @@ class MqttService extends ChangeNotifier {
     final connMessage = MqttConnectMessage()
         .withClientIdentifier(clientId)
         .withWillQos(MqttQos.atLeastOnce)
-        .authenticateAs('smarthome_app', apiKey) // apiKey as MQTT password
         .startClean();
     _client!.connectionMessage = connMessage;
 
     try {
+      debugPrint('[MQTT] Attempting to connect to $brokerHost:$brokerPort...');
       await _client!.connect();
+      debugPrint('[MQTT] Connection attempt completed');
     } catch (e) {
       debugPrint('[MQTT] Connect error: $e');
+      // Provide more specific error messages
+      String errorMessage = 'Connection failed';
+      if (e.toString().contains('NoConnectionException')) {
+        errorMessage = 'Broker not responding. Check host/port or try a different broker.';
+      } else if (e.toString().contains('SocketException')) {
+        errorMessage = 'Network error. Check internet connection.';
+      } else if (e.toString().contains('HandshakeException')) {
+        errorMessage = 'SSL/TLS error. Check TLS settings.';
+      }
+      debugPrint('[MQTT] Error message: $errorMessage');
       _connected = false;
       notifyListeners();
       return false;
     }
 
     if (_client!.connectionStatus?.state == MqttConnectionState.connected) {
+      debugPrint('[MQTT] Successfully connected!');
       _subscribeToStatusTopics();
       _client!.updates?.listen(_onMessage);
       return true;
     } else {
+      debugPrint('[MQTT] Connection status: ${_client!.connectionStatus?.state}');
+      debugPrint('[MQTT] Connection status details: ${_client!.connectionStatus}');
       _connected = false;
       notifyListeners();
       return false;

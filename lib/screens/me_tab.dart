@@ -218,10 +218,9 @@ class _MeTabState extends State<MeTab> {
             iconColor: Colors.teal,
             title: 'MQTT Broker Settings',
             subtitle: 'Configure broker host, port and API key',
-            onTap: () => Navigator.push(
-              context,
+            onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
-                  builder: (_) => const MqttSettingsScreen()),
+                  builder: (context) => const MqttSettingsScreen()),
             ),
           ),
 

@@ -13,15 +13,37 @@ class MqttProvider extends InheritedNotifier<MqttService> {
   static MqttService of(BuildContext context) {
     final provider =
         context.dependOnInheritedWidgetOfExactType<MqttProvider>();
-    assert(provider != null, 'No MqttProvider found in widget tree');
-    return provider!.notifier!;
+    if (provider == null) {
+      throw FlutterError(
+        'No MqttProvider found in widget tree.\n\n'
+        'Fix: Make sure MainShell is wrapped with MqttProvider in main.dart:\n'
+        'return MqttProvider(\n'
+        '  mqtt: mqttService,\n'
+        '  child: const MainShell(),\n'
+        ');\n\n'
+        'Also ensure you are NOT accessing MqttProvider from initState() '
+        'before the widget tree is fully built. Use wisely with proper null checks.',
+      );
+    }
+    return provider.notifier!;
   }
 
   /// Use this when you don't need to rebuild on changes (e.g., just publish).
   static MqttService read(BuildContext context) {
     final provider =
         context.getInheritedWidgetOfExactType<MqttProvider>();
-    assert(provider != null, 'No MqttProvider found in widget tree');
-    return provider!.notifier!;
+    if (provider == null) {
+      throw FlutterError(
+        'No MqttProvider found in widget tree.\n\n'
+        'Fix: Make sure MainShell is wrapped with MqttProvider in main.dart:\n'
+        'return MqttProvider(\n'
+        '  mqtt: mqttService,\n'
+        '  child: const MainShell(),\n'
+        ');\n\n'
+        'Also ensure you are NOT accessing MqttProvider from initState() '
+        'before the widget tree is fully built. Use wisely with proper null checks.',
+      );
+    }
+    return provider.notifier!;
   }
 }

@@ -4,11 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'main_shell.dart';
 import 'screens/login_screen.dart';
 import 'services/firestore_service.dart';
+import 'services/mqtt_service.dart';
+import 'services/mqtt_provider.dart';
 import 'theme_provider.dart';
+
+// Singleton MQTT service to ensure only one instance exists
+late final MqttService _mqttService;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  _mqttService = MqttService(); // Initialize MQTT once
   runApp(MyApp());
 }
 
@@ -60,30 +66,33 @@ class _MyAppState extends State<MyApp> {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'SmartHome',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            colorSchemeSeed: Colors.blue,
-            useMaterial3: true,
-          ),
-          themeMode: themeMode,
-          // Auth gate — shows login or main shell
-          home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (snapshot.hasData) {
-                return const MainShell(); // logged in
-              }
-              return LoginScreen(); // not logged in
-            },
+        return MqttProvider(
+          mqtt: _mqttService,
+          child: MaterialApp(
+            title: 'SmartHome',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
+            darkTheme: ThemeData(
+              brightness: Brightness.dark,
+              colorSchemeSeed: Colors.blue,
+              useMaterial3: true,
+            ),
+            themeMode: themeMode,
+            // Auth gate — shows login or main shell
+            home: StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasData) {
+                  return const MainShell(); // logged in
+                }
+                return LoginScreen(); // not logged in
+              },
+            ),
           ),
         );
       },
