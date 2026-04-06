@@ -96,7 +96,8 @@ class MqttService extends ChangeNotifier {
       _stateController.stream;
 
   // Device online/offline status stream
-  final _deviceStatusController = StreamController<Map<String, bool>>.broadcast();
+  final _deviceStatusController =
+      StreamController<Map<String, bool>>.broadcast();
   Stream<Map<String, bool>> get deviceStatusStream =>
       _deviceStatusController.stream;
 
@@ -150,8 +151,7 @@ class MqttService extends ChangeNotifier {
     // Callbacks
     _client!.onConnected = _onConnected;
     _client!.onDisconnected = _onDisconnected;
-    _client!.onSubscribed = (topic) =>
-        debugPrint('[MQTT] Subscribed: $topic');
+    _client!.onSubscribed = (topic) => debugPrint('[MQTT] Subscribed: $topic');
     _client!.onSubscribeFail = (topic) =>
         debugPrint('[MQTT] Subscribe FAILED: $topic');
 
@@ -192,8 +192,7 @@ class MqttService extends ChangeNotifier {
     debugPrint('[MQTT] Connection state: $state  returnCode: $returnCode');
 
     if (state != MqttConnectionState.connected) {
-      _lastError =
-          'Connection refused. Return code: $returnCode';
+      _lastError = 'Connection refused. Return code: $returnCode';
       _cleanup();
       return false;
     }
@@ -220,6 +219,7 @@ class MqttService extends ChangeNotifier {
   void _onDisconnected() {
     _connected = false;
     debugPrint('[MQTT] Disconnected');
+    _publishDeviceStatusSnapshot();
     notifyListeners();
   }
 
@@ -275,7 +275,8 @@ class MqttService extends ChangeNotifier {
         _stateController.add(Map.from(_states));
         notifyListeners();
         debugPrint(
-            '[MQTT] Timeout — reverting switch $switchIndex on $macAddress');
+          '[MQTT] Timeout — reverting switch $switchIndex on $macAddress',
+        );
       }
     });
 
@@ -302,9 +303,7 @@ class MqttService extends ChangeNotifier {
     for (final msg in messages) {
       final topic = msg.topic;
       final pub = msg.payload as MqttPublishMessage;
-      final raw = MqttPublishPayload.bytesToStringAsString(
-        pub.payload.message,
-      );
+      final raw = MqttPublishPayload.bytesToStringAsString(pub.payload.message);
 
       debugPrint('[MQTT] ← $topic : $raw');
 
@@ -335,10 +334,14 @@ class MqttService extends ChangeNotifier {
 
       // Set device as online
       _updateDeviceStatus(macAddress, true);
+      _publishDeviceStatusSnapshot();
+      notifyListeners();
 
       // Start offline detection timer
       _heartbeatTimeouts[macAddress] = Timer(offlineTimeout, () {
         _updateDeviceStatus(macAddress, false);
+        _publishDeviceStatusSnapshot();
+        notifyListeners();
         debugPrint('[MQTT] Device $macAddress marked offline (no heartbeat)');
       });
 
@@ -364,15 +367,17 @@ class MqttService extends ChangeNotifier {
       _timeouts.remove(key);
 
       // Update state, clear inProgress
-      _states[key] =
-          SwitchState(isOn: isOn, value: value, inProgress: false);
+      _states[key] = SwitchState(isOn: isOn, value: value, inProgress: false);
       _stateController.add(Map.from(_states));
       notifyListeners();
 
       // Mark device as online when we receive status message
       _lastHeartbeats[macAddress] = DateTime.now();
       _updateDeviceStatus(macAddress, true);
-      debugPrint('[MQTT] Status from $macAddress switch $switchIndex: ${isOn ? 'ON' : 'OFF'}');
+      _publishDeviceStatusSnapshot();
+      debugPrint(
+        '[MQTT] Status from $macAddress switch $switchIndex: ${isOn ? 'ON' : 'OFF'}',
+      );
     } catch (e) {
       debugPrint('[MQTT] Failed to parse status: $e  raw=$raw');
     }
@@ -383,9 +388,7 @@ class MqttService extends ChangeNotifier {
   void sendHeartbeat(String macAddress) {
     if (!_connected || _client == null) return;
 
-    final payload = jsonEncode({
-      'timestamp': DateTime.now().toIso8601String(),
-    });
+    final payload = jsonEncode({'timestamp': DateTime.now().toIso8601String()});
 
     final builder = MqttClientPayloadBuilder()..addString(payload);
     _client!.publishMessage(
@@ -413,10 +416,14 @@ class MqttService extends ChangeNotifier {
   /// Seed initial Firestore state into MQTT state map so the UI shows the
   /// correct values before any MQTT message arrives.
   /// Call this every time the Firestore snapshot updates.
-  void seedStates(String macAddress, List<Map<String, dynamic>> switches) {
+  void seedStates(
+    String macAddress,
+    List<Map<String, dynamic>> switches, {
+    int startIndex = 0,
+  }) {
     bool changed = false;
     for (int i = 0; i < switches.length; i++) {
-      final key = SwitchKey(macAddress, i);
+      final key = SwitchKey(macAddress, startIndex + i);
       // Only seed if not already in map (don't overwrite live MQTT state)
       if (!_states.containsKey(key)) {
         _states[key] = SwitchState(
@@ -433,14 +440,26 @@ class MqttService extends ChangeNotifier {
 
   // Device status management
 
+  void _publishDeviceStatusSnapshot() {
+    if (_deviceStatusController.isClosed) return;
+
+    final now = DateTime.now();
+    _deviceStatusController.add({
+      for (final entry in _lastHeartbeats.entries)
+        entry.key: now.difference(entry.value) < offlineTimeout,
+    });
+  }
+
   void _updateDeviceStatus(String macAddress, bool isOnline) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) {
-        debugPrint('[MQTT] No user logged in - skipping device status update for $macAddress');
+        debugPrint(
+          '[MQTT] No user logged in - skipping device status update for $macAddress',
+        );
         return;
       }
-      
+
       if (isOnline) {
         // Look up device by MAC address and update
         await _firestoreService.updateDeviceHeartbeatByMac(uid, macAddress);
@@ -448,10 +467,14 @@ class MqttService extends ChangeNotifier {
         // Mark device offline by MAC address
         await _firestoreService.markDeviceOfflineByMac(uid, macAddress);
       }
-      debugPrint('[MQTT] Device $macAddress status updated: ${isOnline ? 'online' : 'offline'}');
+      debugPrint(
+        '[MQTT] Device $macAddress status updated: ${isOnline ? 'online' : 'offline'}',
+      );
     } catch (e) {
       if (e.toString().contains('permission-denied')) {
-        debugPrint('[MQTT] Permission denied updating device $macAddress - device may not exist yet');
+        debugPrint(
+          '[MQTT] Permission denied updating device $macAddress - device may not exist yet',
+        );
       } else {
         debugPrint('[MQTT] Failed to update device status: $e');
       }
@@ -495,7 +518,9 @@ class MqttService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final interval = prefs.getInt(_heartbeatIntervalKey) ?? 30;
       final timeout = prefs.getInt(_offlineTimeoutKey) ?? 60;
-      debugPrint('[MQTT] Loaded heartbeat settings: interval=$interval, timeout=$timeout');
+      debugPrint(
+        '[MQTT] Loaded heartbeat settings: interval=$interval, timeout=$timeout',
+      );
       return {'interval': interval, 'timeout': timeout};
     } catch (e) {
       debugPrint('[MQTT] Failed to load heartbeat settings: $e');

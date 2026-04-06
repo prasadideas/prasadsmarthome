@@ -5,7 +5,6 @@ import '../models/home_model.dart';
 import '../models/room_model.dart';
 import '../services/firestore_service.dart';
 import '../services/mqtt_provider.dart';
-import '../services/mqtt_service.dart';
 import '../screens/devices_screen.dart';
 import 'add_device_screen.dart';
 import 'homes_screen.dart';
@@ -198,10 +197,60 @@ class _RoomsScreenState extends State<RoomsScreen> {
     if (confirmed != true) return;
 
     try {
-      await _firestoreService.setRoomAllSwitchesOff(_uid, roomId);
+      final mqtt = MqttProvider.read(context);
+      if (!mqtt.isConnected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('MQTT is offline. Reconnect and try again.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final devices = await _firestoreService
+          .streamDevicesInRoom(_uid, roomId)
+          .first;
+      var sentCommands = 0;
+
+      for (final device in devices) {
+        final macId = device.macId;
+        if (macId == null || macId.isEmpty) continue;
+
+        mqtt.seedStates(
+          macId,
+          device.switches.map((sw) => sw.toMap()).toList(),
+        );
+
+        for (final entry in device.switches.asMap().entries) {
+          mqtt.publishCommand(
+            macAddress: macId,
+            switchIndex: entry.key,
+            isOn: false,
+            value: 0,
+            type: entry.value.type,
+          );
+          sentCommands++;
+        }
+      }
+
+      if (sentCommands == 0) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No controllable devices found in this room.'),
+            ),
+          );
+        }
+        return;
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All switches have been turned off.')),
+          SnackBar(
+            content: Text('Sent OFF command to $sentCommands switches.'),
+          ),
         );
       }
     } catch (e) {
@@ -610,6 +659,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                           stream: _firestoreService.streamDevices(_uid),
                           builder: (context, snap) {
                             if (!snap.hasData) return const SizedBox.shrink();
+                            final mqtt = MqttProvider.of(context);
 
                             // Only devices in this room
                             final roomDevices = snap.data!
@@ -626,70 +676,80 @@ class _RoomsScreenState extends State<RoomsScreen> {
                               );
                             }
 
-                            // Listen to MQTT state changes so dots update in real-time
-                            final mqtt = MqttProvider.of(context);
-                            return StreamBuilder<Map<SwitchKey, SwitchState>>(
-                              stream: mqtt.stateStream,
-                              builder: (context, mqttSnap) {
-                                // Render switches grouped by device
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Wrap(
-                                      spacing: 4,
-                                      runSpacing: 4,
-                                      children: roomDevices.expand((device) {
-                                        final deviceMac = device.macId ?? '';
-                                        return device.switches.asMap().entries.map((entry) {
-                                          final switchIndex = entry.key; // Index within device
-                                          final sw = entry.value;
-                                          
-                                          // Get MQTT state using correct device MAC and switch index
-                                          final mqttState = mqtt.getState(deviceMac, switchIndex);
-                                          final isOn = mqttState?.isOn ?? false;
+                            for (final device in roomDevices) {
+                              final macId = device.macId;
+                              if (macId == null || macId.isEmpty) continue;
+                              mqtt.seedStates(
+                                macId,
+                                device.switches
+                                    .map((sw) => sw.toMap())
+                                    .toList(),
+                              );
+                            }
 
-                                          return Tooltip(
-                                            message: sw.label,
-                                            child: Container(
-                                              width: 10,
-                                              height: 10,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: isOn
-                                                    ? Theme.of(context).primaryColor
-                                                    : Colors.grey.shade300,
-                                                border: Border.all(
-                                                  color: isOn
-                                                      ? Theme.of(context).primaryColor
-                                                      : Colors.grey.shade400,
-                                                  width: 0.5,
-                                                ),
-                                              ),
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Wrap(
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  children: roomDevices.expand((device) {
+                                    final deviceMac = device.macId ?? '';
+                                    return device.switches.asMap().entries.map((
+                                      entry,
+                                    ) {
+                                      final switchIndex = entry.key;
+                                      final sw = entry.value;
+                                      final mqttState = deviceMac.isEmpty
+                                          ? null
+                                          : mqtt.getState(
+                                              deviceMac,
+                                              switchIndex,
+                                            );
+                                      final isOn = mqttState?.isOn ?? sw.isOn;
+
+                                      return Tooltip(
+                                        message: sw.label,
+                                        child: Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: isOn
+                                                ? Theme.of(context).primaryColor
+                                                : Colors.grey.shade300,
+                                            border: Border.all(
+                                              color: isOn
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).primaryColor
+                                                  : Colors.grey.shade400,
+                                              width: 0.5,
                                             ),
-                                          );
-                                        });
-                                      }).toList(),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    OutlinedButton.icon(
-                                      icon: const Icon(
-                                        Icons.power_settings_new,
-                                        size: 16,
-                                      ),
-                                      label: const Text('Turn off all switches'),
-                                      style: OutlinedButton.styleFrom(
-                                        minimumSize: const Size.fromHeight(32),
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 8,
-                                          horizontal: 12,
+                                          ),
                                         ),
-                                      ),
-                                      onPressed: () =>
-                                          _confirmTurnOffAll(room.roomId),
+                                      );
+                                    });
+                                  }).toList(),
+                                ),
+                                const SizedBox(height: 8),
+                                OutlinedButton.icon(
+                                  icon: const Icon(
+                                    Icons.power_settings_new,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Turn off all switches'),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(32),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                      horizontal: 12,
                                     ),
-                                  ],
-                                );
-                              },
+                                  ),
+                                  onPressed: () =>
+                                      _confirmTurnOffAll(room.roomId),
+                                ),
+                              ],
                             );
                           },
                         ),

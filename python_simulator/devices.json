@@ -8,7 +8,7 @@
     "online": true,
     "switches": [
       {
-        "isOn": false,
+        "isOn": true,
         "value": 0.0,
         "type": "toggle"
       }
@@ -21,7 +21,7 @@
     "online": true,
     "switches": [
       {
-        "isOn": true,
+        "isOn": false,
         "value": 0.0,
         "type": "toggle"
       },

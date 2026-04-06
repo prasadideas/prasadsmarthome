@@ -11,11 +11,11 @@ import '../services/mqtt_provider.dart';
 /// - Allows controlling other switches while one is in progress
 /// - Prevents controlling when device is offline
 class SwitchTile extends StatefulWidget {
-  final String deviceMac;    // device's MAC address (used as deviceId)
+  final String deviceMac; // device's MAC address (used as deviceId)
   final int switchIndex;
   final SwitchModel switchModel; // initial data from Firestore
-  final bool compact;           // true = small grid tile, false = full list tile
-  final bool isDeviceOnline;    // whether the device is online
+  final bool compact; // true = small grid tile, false = full list tile
+  final bool isDeviceOnline; // whether the device is online
 
   const SwitchTile({
     super.key,
@@ -23,7 +23,7 @@ class SwitchTile extends StatefulWidget {
     required this.switchIndex,
     required this.switchModel,
     this.compact = true,
-    this.isDeviceOnline = true,  // default to online
+    this.isDeviceOnline = true, // default to online
   });
 
   @override
@@ -35,6 +35,7 @@ class _SwitchTileState extends State<SwitchTile>
   late AnimationController _spinController;
   StreamSubscription? _sub;
   SwitchState? _mqttState;
+  MqttService? _mqtt;
 
   @override
   void initState() {
@@ -45,30 +46,57 @@ class _SwitchTileState extends State<SwitchTile>
     );
   }
 
+  void _syncSpinner() {
+    if (_mqttState?.inProgress ?? false) {
+      _spinController.repeat();
+      return;
+    }
+
+    _spinController.stop();
+    _spinController.reset();
+  }
+
+  void _seedAndSync(MqttService mqtt) {
+    mqtt.seedStates(widget.deviceMac, [
+      widget.switchModel.toMap(),
+    ], startIndex: widget.switchIndex);
+    _mqttState = mqtt.getState(widget.deviceMac, widget.switchIndex);
+    _syncSpinner();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final mqtt = MqttProvider.of(context);
 
-    // Seed initial state from Firestore so the UI shows last known state before MQTT updates
-    mqtt.seedStates(widget.deviceMac, [widget.switchModel.toMap()]);
-
-    // Subscribe to MQTT state stream for real-time updates
-    _sub?.cancel();
-    _sub = mqtt.stateStream.listen((states) {
-      final key = SwitchKey(widget.deviceMac, widget.switchIndex);
-      if (states.containsKey(key)) {
-        if (mounted) {
-          setState(() => _mqttState = states[key]);
-          if (_mqttState!.inProgress) {
-            _spinController.repeat();
-          } else {
-            _spinController.stop();
-            _spinController.reset();
-          }
+    if (!identical(_mqtt, mqtt)) {
+      _sub?.cancel();
+      _mqtt = mqtt;
+      _sub = mqtt.stateStream.listen((states) {
+        final key = SwitchKey(widget.deviceMac, widget.switchIndex);
+        final nextState = states[key];
+        if (nextState != null && mounted) {
+          setState(() => _mqttState = nextState);
+          _syncSpinner();
         }
-      }
-    });
+      });
+    }
+
+    _seedAndSync(mqtt);
+  }
+
+  @override
+  void didUpdateWidget(covariant SwitchTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final mqtt = _mqtt;
+    if (mqtt == null) return;
+
+    if (oldWidget.deviceMac != widget.deviceMac ||
+        oldWidget.switchIndex != widget.switchIndex ||
+        oldWidget.switchModel.isOn != widget.switchModel.isOn ||
+        oldWidget.switchModel.value != widget.switchModel.value) {
+      _seedAndSync(mqtt);
+    }
   }
 
   @override
@@ -80,12 +108,9 @@ class _SwitchTileState extends State<SwitchTile>
 
   // ── Getters pulling from MQTT state or falling back to Firestore ───
 
-  bool get _isOn =>
-      _mqttState?.isOn ?? widget.switchModel.isOn;
+  bool get _isOn => _mqttState?.isOn ?? widget.switchModel.isOn;
 
-  double get _value =>
-      _mqttState?.value ??
-      widget.switchModel.value.toDouble();
+  double get _value => _mqttState?.value ?? widget.switchModel.value.toDouble();
 
   bool get _inProgress => _mqttState?.inProgress ?? false;
 
@@ -145,7 +170,7 @@ class _SwitchTileState extends State<SwitchTile>
 
   @override
   Widget build(BuildContext context) {
-    final mqtt = MqttProvider.of(context);
+    final mqtt = _mqtt ?? MqttProvider.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -160,8 +185,7 @@ class _SwitchTileState extends State<SwitchTile>
 
   // ── Compact grid tile (used in room cards and device screen) ──
 
-  Widget _buildCompactTile(
-      MqttService mqtt, ThemeData theme, ColorScheme cs) {
+  Widget _buildCompactTile(MqttService mqtt, ThemeData theme, ColorScheme cs) {
     final onColor = cs.primary;
     final offColor = cs.surfaceContainerHighest;
     final offlineColor = cs.surfaceContainerHighest.withOpacity(0.5);
@@ -195,7 +219,7 @@ class _SwitchTileState extends State<SwitchTile>
                     color: onColor.withOpacity(0.25),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
-                  )
+                  ),
                 ]
               : [],
         ),
@@ -223,8 +247,7 @@ class _SwitchTileState extends State<SwitchTile>
 
   // ── Full list tile (used in device detail screen) ──────────
 
-  Widget _buildFullTile(
-      MqttService mqtt, ThemeData theme, ColorScheme cs) {
+  Widget _buildFullTile(MqttService mqtt, ThemeData theme, ColorScheme cs) {
     final bgColor = !widget.isDeviceOnline
         ? cs.surfaceContainerHighest.withOpacity(0.5)
         : (_isOn ? cs.primaryContainer : cs.surfaceContainerHighest);
@@ -240,19 +263,13 @@ class _SwitchTileState extends State<SwitchTile>
         leading: _buildIconWidget(cs),
         title: Text(
           widget.switchModel.label,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: textColor,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
         ),
         subtitle: Text(
           widget.isDeviceOnline
               ? _type[0].toUpperCase() + _type.substring(1)
               : 'Offline - ${_type[0].toUpperCase() + _type.substring(1)}',
-          style: TextStyle(
-            fontSize: 12,
-            color: textColor.withOpacity(0.7),
-          ),
+          style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.7)),
         ),
         trailing: _buildStatusIndicator(
           cs,
@@ -266,8 +283,7 @@ class _SwitchTileState extends State<SwitchTile>
 
   // ── Slider tile for fan/dimmer ─────────────────────────────
 
-  Widget _buildSliderTile(
-      MqttService mqtt, ThemeData theme, ColorScheme cs) {
+  Widget _buildSliderTile(MqttService mqtt, ThemeData theme, ColorScheme cs) {
     final maxVal = _isFan ? 5.0 : 100.0;
     final divisions = _isFan ? 5 : 20;
     final label = _isFan
@@ -283,7 +299,9 @@ class _SwitchTileState extends State<SwitchTile>
         : (_isOn ? cs.onPrimaryContainer : cs.onSurfaceVariant);
     final secondaryTextColor = !widget.isDeviceOnline
         ? cs.onSurfaceVariant.withOpacity(0.4)
-        : (_isOn ? cs.onPrimaryContainer.withOpacity(0.7) : cs.onSurfaceVariant.withOpacity(0.7));
+        : (_isOn
+              ? cs.onPrimaryContainer.withOpacity(0.7)
+              : cs.onSurfaceVariant.withOpacity(0.7));
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -329,25 +347,27 @@ class _SwitchTileState extends State<SwitchTile>
             SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 4,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 10),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 18),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
               ),
               child: Slider(
                 value: _value.clamp(0, maxVal),
                 min: 0,
                 max: maxVal,
                 divisions: divisions,
-                activeColor: widget.isDeviceOnline ? cs.primary : cs.outlineVariant.withOpacity(0.5),
+                activeColor: widget.isDeviceOnline
+                    ? cs.primary
+                    : cs.outlineVariant.withOpacity(0.5),
                 inactiveColor: cs.outlineVariant,
                 onChanged: (_inProgress || !widget.isDeviceOnline)
                     ? null
-                    : (v) => setState(() => _mqttState = SwitchState(
+                    : (v) => setState(
+                        () => _mqttState = SwitchState(
                           isOn: v > 0,
                           value: v,
                           inProgress: false,
-                        )),
+                        ),
+                      ),
                 onChangeEnd: (v) => _setSliderValue(mqtt, v),
               ),
             ),
@@ -359,18 +379,14 @@ class _SwitchTileState extends State<SwitchTile>
 
   // ── Shared sub-widgets ─────────────────────────────────────
 
-  Widget _buildStatusIndicator(
-      ColorScheme cs, Color onColor, Color offColor) {
+  Widget _buildStatusIndicator(ColorScheme cs, Color onColor, Color offColor) {
     if (_inProgress) {
       return SizedBox(
         width: 20,
         height: 20,
         child: RotationTransition(
           turns: _spinController,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: onColor,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2, color: onColor),
         ),
       );
     }
@@ -382,7 +398,8 @@ class _SwitchTileState extends State<SwitchTile>
   }
 
   Widget _buildIconWidget(ColorScheme cs) {
-    final iconCode = int.tryParse(widget.switchModel.icon) ??
+    final iconCode =
+        int.tryParse(widget.switchModel.icon) ??
         Icons.lightbulb_outline.codePoint;
     return Icon(
       IconData(iconCode, fontFamily: 'MaterialIcons'),

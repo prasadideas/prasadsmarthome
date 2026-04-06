@@ -34,13 +34,13 @@ class _HomeTabState extends State<HomeTab> {
 
   Future<void> _autoConnectMqtt() async {
     if (!mounted) return;
-    
+
     final mqtt = MqttProvider.read(context);
-    
+
     // Only auto-connect if not already connected
     if (!mqtt.isConnected) {
       debugPrint('[HomeTab] Auto-connecting to MQTT broker...');
-      
+
       // Load saved settings before connecting
       final settings = await MqttService.loadAllSettings();
       mqtt.brokerHost = settings['host'] as String;
@@ -49,8 +49,10 @@ class _HomeTabState extends State<HomeTab> {
       mqtt.useTls = settings['useTls'] as bool;
       mqtt.heartbeatInterval = Duration(seconds: settings['interval'] as int);
       mqtt.offlineTimeout = Duration(seconds: settings['timeout'] as int);
-      
-      debugPrint('[HomeTab] Using settings: ${settings['host']}:${settings['port']}');
+
+      debugPrint(
+        '[HomeTab] Using settings: ${settings['host']}:${settings['port']}',
+      );
       await mqtt.connect();
       debugPrint('[HomeTab] MQTT connection result: ${mqtt.isConnected}');
     }
@@ -130,8 +132,10 @@ class _HomeTabState extends State<HomeTab> {
             children: [
               const Icon(Icons.home_outlined, size: 64, color: Colors.grey),
               const SizedBox(height: 16),
-              const Text('No homes added yet',
-                  style: TextStyle(fontSize: 18, color: Colors.grey)),
+              const Text(
+                'No homes added yet',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {},
@@ -150,8 +154,7 @@ class _HomeTabState extends State<HomeTab> {
           builder: (context, snapshot) {
             final homes = snapshot.data ?? [];
             return GestureDetector(
-              onTap:
-                  homes.length > 1 ? () => _showSwitchHomeMenu(homes) : null,
+              onTap: homes.length > 1 ? () => _showSwitchHomeMenu(homes) : null,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -169,42 +172,60 @@ class _HomeTabState extends State<HomeTab> {
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'add_room') {
-                Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => RoomsScreen(home: _activeHome!)));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RoomsScreen(home: _activeHome!),
+                  ),
+                );
               } else if (value == 'add_device') {
-                Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => AddDeviceScreen(home: _activeHome!)));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddDeviceScreen(home: _activeHome!),
+                  ),
+                );
               } else if (value == 'all_devices') {
-                Navigator.push(context, MaterialPageRoute(
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
                     builder: (_) =>
-                        DevicesScreen(home: _activeHome!, room: null)));
+                        DevicesScreen(home: _activeHome!, room: null),
+                  ),
+                );
               }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'add_room',
-                child: Row(children: [
-                  Icon(Icons.meeting_room_outlined),
-                  SizedBox(width: 12),
-                  Text('Add Room'),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.meeting_room_outlined),
+                    SizedBox(width: 12),
+                    Text('Add Room'),
+                  ],
+                ),
               ),
               const PopupMenuItem(
                 value: 'add_device',
-                child: Row(children: [
-                  Icon(Icons.devices_outlined),
-                  SizedBox(width: 12),
-                  Text('Add Device'),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.devices_outlined),
+                    SizedBox(width: 12),
+                    Text('Add Device'),
+                  ],
+                ),
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'all_devices',
-                child: Row(children: [
-                  Icon(Icons.list_outlined),
-                  SizedBox(width: 12),
-                  Text('All Devices'),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.list_outlined),
+                    SizedBox(width: 12),
+                    Text('All Devices'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -224,27 +245,32 @@ class _HomeTabState extends State<HomeTab> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.meeting_room_outlined,
-                      size: 64,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.3)),
+                  Icon(
+                    Icons.meeting_room_outlined,
+                    size: 64,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.3),
+                  ),
                   const SizedBox(height: 16),
-                  Text('No rooms yet',
-                      style: TextStyle(
-                          fontSize: 18,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.5))),
+                  Text(
+                    'No rooms yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Text('Tap ⋮ to add your first room',
-                      style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.4))),
+                  Text(
+                    'Tap ⋮ to add your first room',
+                    style: TextStyle(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.4),
+                    ),
+                  ),
                 ],
               ),
             );
@@ -305,31 +331,83 @@ class _RoomCard extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Turn off all switches'),
         content: const Text(
-            'Are you sure you want to turn off all switches in this room?'),
+          'Are you sure you want to turn off all switches in this room?',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Turn off',
-                  style: TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Turn off', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
-      await firestoreService.setRoomAllSwitchesOff(uid, room.roomId);
+      final mqtt = MqttProvider.read(context);
+      if (!mqtt.isConnected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('MQTT is offline. Reconnect and try again.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final devices = await firestoreService
+          .streamDevicesInRoom(uid, room.roomId)
+          .first;
+      var sentCommands = 0;
+
+      for (final device in devices) {
+        final macId = device.macId;
+        if (macId == null || macId.isEmpty) continue;
+
+        mqtt.seedStates(
+          macId,
+          device.switches.map((sw) => sw.toMap()).toList(),
+        );
+
+        for (final entry in device.switches.asMap().entries) {
+          mqtt.publishCommand(
+            macAddress: macId,
+            switchIndex: entry.key,
+            isOn: false,
+            value: 0,
+            type: entry.value.type,
+          );
+          sentCommands++;
+        }
+      }
+
+      if (sentCommands == 0) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No controllable devices found in this room.'),
+            ),
+          );
+        }
+        return;
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('All switches have been turned off.')));
+          SnackBar(
+            content: Text('Sent OFF command to $sentCommands switches.'),
+          ),
+        );
       }
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Failed to turn off all switches.')));
+          const SnackBar(content: Text('Failed to turn off all switches.')),
+        );
       }
     }
   }
@@ -349,7 +427,8 @@ class _RoomCard extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (_) => DevicesScreen(home: home, room: room)),
+              builder: (_) => DevicesScreen(home: home, room: room),
+            ),
           ),
           child: Container(
             decoration: BoxDecoration(
@@ -364,7 +443,8 @@ class _RoomCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: cs.primaryContainer,
                     borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20)),
+                      top: Radius.circular(20),
+                    ),
                   ),
                   padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
                   child: Row(
@@ -375,8 +455,7 @@ class _RoomCard extends StatelessWidget {
                           color: cs.primary.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(_roomIcon(),
-                            color: cs.primary, size: 22),
+                        child: Icon(_roomIcon(), color: cs.primary, size: 22),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -391,15 +470,16 @@ class _RoomCard extends StatelessWidget {
                       ),
                       // Turn-off-all button
                       IconButton(
-                        icon: const Icon(Icons.power_settings_new,
-                            size: 20),
+                        icon: const Icon(Icons.power_settings_new, size: 20),
                         color: cs.error,
                         tooltip: 'Turn off all',
                         onPressed: () => _confirmTurnOffAll(context),
                       ),
                       // Arrow
-                      Icon(Icons.chevron_right,
-                          color: cs.onPrimaryContainer.withOpacity(0.5)),
+                      Icon(
+                        Icons.chevron_right,
+                        color: cs.onPrimaryContainer.withOpacity(0.5),
+                      ),
                     ],
                   ),
                 ),
@@ -408,15 +488,17 @@ class _RoomCard extends StatelessWidget {
                 StreamBuilder<List<DeviceModel>>(
                   stream: firestoreService.streamDevices(uid),
                   builder: (context, snap) {
+                    final mqtt = MqttProvider.of(context);
                     if (!snap.hasData) {
                       return const Padding(
                         padding: EdgeInsets.all(16),
                         child: Center(
-                            child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2))),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
                       );
                     }
 
@@ -424,22 +506,46 @@ class _RoomCard extends StatelessWidget {
                         .where((d) => d.linkedRoom == room.roomId)
                         .toList();
 
+                    for (final device in devices) {
+                      final macId = device.macId;
+                      if (macId == null || macId.isEmpty) continue;
+                      mqtt.seedStates(
+                        macId,
+                        device.switches.map((sw) => sw.toMap()).toList(),
+                      );
+                    }
+
                     if (devices.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                        child: Text('No devices yet',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: cs.onSurface.withOpacity(0.4))),
+                        child: Text(
+                          'No devices yet',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurface.withOpacity(0.4),
+                          ),
+                        ),
                       );
                     }
 
                     // Count ON switches across all devices
-                    final allSwitches = devices
-                        .expand((d) => d.switches)
-                        .toList();
-                    final onCount =
-                        allSwitches.where((s) => s.isOn).length;
+                    final totalSwitches = devices.fold<int>(
+                      0,
+                      (count, device) => count + device.switches.length,
+                    );
+                    final onCount = devices.fold<int>(0, (count, device) {
+                      final macId = device.macId;
+                      if (macId == null || macId.isEmpty) {
+                        return count +
+                            device.switches.where((sw) => sw.isOn).length;
+                      }
+
+                      return count +
+                          device.switches.asMap().entries.where((entry) {
+                            final mqttState = mqtt.getState(macId, entry.key);
+                            return mqttState?.isOn ?? entry.value.isOn;
+                          }).length;
+                    });
 
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -449,15 +555,17 @@ class _RoomCard extends StatelessWidget {
                           // Summary line
                           Row(
                             children: [
-                              Icon(Icons.circle,
-                                  size: 8,
-                                  color: onCount > 0
-                                      ? cs.primary
-                                      : cs.onSurface.withOpacity(0.3)),
+                              Icon(
+                                Icons.circle,
+                                size: 8,
+                                color: onCount > 0
+                                    ? cs.primary
+                                    : cs.onSurface.withOpacity(0.3),
+                              ),
                               const SizedBox(width: 6),
                               Text(
                                 onCount > 0
-                                    ? '$onCount of ${allSwitches.length} switches on'
+                                    ? '$onCount of $totalSwitches switches on'
                                     : 'All switches off',
                                 style: TextStyle(
                                   fontSize: 12,
@@ -472,8 +580,9 @@ class _RoomCard extends StatelessWidget {
                           const SizedBox(height: 10),
 
                           // Per-device grouped dots
-                          ...devices.map((device) =>
-                              _DeviceDotRow(device: device, cs: cs)),
+                          ...devices.map(
+                            (device) => _DeviceDotRow(device: device, cs: cs),
+                          ),
                         ],
                       ),
                     );
@@ -498,6 +607,13 @@ class _DeviceDotRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mqtt = MqttProvider.of(context);
+    final macId = device.macId;
+
+    if (macId != null && macId.isNotEmpty) {
+      mqtt.seedStates(macId, device.switches.map((sw) => sw.toMap()).toList());
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -521,8 +637,11 @@ class _DeviceDotRow extends StatelessWidget {
           Wrap(
             spacing: 5,
             runSpacing: 5,
-            children: device.switches.map((sw) {
-              final isOn = sw.isOn;
+            children: device.switches.asMap().entries.map((entry) {
+              final sw = entry.value;
+              final isOn = macId != null && macId.isNotEmpty
+                  ? (mqtt.getState(macId, entry.key)?.isOn ?? sw.isOn)
+                  : sw.isOn;
               return Tooltip(
                 message: sw.label,
                 child: AnimatedContainer(
@@ -533,9 +652,7 @@ class _DeviceDotRow extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: isOn ? cs.primary : Colors.transparent,
                     border: Border.all(
-                      color: isOn
-                          ? cs.primary
-                          : cs.onSurface.withOpacity(0.25),
+                      color: isOn ? cs.primary : cs.onSurface.withOpacity(0.25),
                       width: 1.5,
                     ),
                   ),
