@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_model.dart';
 import '../services/firestore_service.dart';
+import '../widgets/firestore_metrics_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -36,13 +37,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const FirestoreMetricsCard(screenLabel: 'Settings'),
+          const SizedBox(height: 24),
 
           // ── Favourite home section ──────────────────────────
-          const Text('Default Home',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+          const Text(
+            'Default Home',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
           const SizedBox(height: 4),
           const Text(
             'This home opens automatically when you launch the app.',
@@ -58,8 +64,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
               final homes = snapshot.data!;
               if (homes.isEmpty) {
-                return const Text('No homes added yet.',
-                    style: TextStyle(color: Colors.grey));
+                return const Text(
+                  'No homes added yet.',
+                  style: TextStyle(color: Colors.grey),
+                );
               }
 
               return Column(
@@ -74,26 +82,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             : Colors.grey.shade100,
                         child: Icon(
                           isSelected ? Icons.star : Icons.home_outlined,
-                          color:
-                              isSelected ? Colors.amber : Colors.grey,
+                          color: isSelected ? Colors.amber : Colors.grey,
                         ),
                       ),
-                      title: Text(home.homeName,
-                          style: TextStyle(
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal)),
+                      title: Text(
+                        home.homeName,
+                        style: TextStyle(
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
                       subtitle: Text(home.address),
                       trailing: isSelected
                           ? const Chip(
-                              label: Text('Default',
-                                  style: TextStyle(fontSize: 12)),
+                              label: Text(
+                                'Default',
+                                style: TextStyle(fontSize: 12),
+                              ),
                               backgroundColor: Colors.amber,
                             )
                           : TextButton(
                               onPressed: () async {
-                                await _firestoreService
-                                    .setFavouriteHome(uid, home.homeId);
+                                await _firestoreService.setFavouriteHome(
+                                  uid,
+                                  home.homeId,
+                                );
                                 setState(() {
                                   _favouriteHomeId = home.homeId;
                                 });
@@ -101,7 +115,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                          '${home.homeName} set as default home'),
+                                        '${home.homeName} set as default home',
+                                      ),
                                     ),
                                   );
                                 }

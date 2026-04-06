@@ -610,7 +610,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 1.3,
+              mainAxisExtent: 188,
             ),
             itemCount: rooms.length,
             itemBuilder: (context, index) {
@@ -630,7 +630,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Room icon + name row
                         Row(
@@ -665,6 +665,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                             final roomDevices = snap.data!
                                 .where((d) => d.linkedRoom == room.roomId)
                                 .toList();
+                            final cs = Theme.of(context).colorScheme;
 
                             if (roomDevices.isEmpty) {
                               return const Text(
@@ -675,6 +676,34 @@ class _RoomsScreenState extends State<RoomsScreen> {
                                 ),
                               );
                             }
+
+                            final switchDots = roomDevices
+                                .expand((device) {
+                                  final deviceMac = device.macId ?? '';
+                                  return device.switches.asMap().entries.map((
+                                    entry,
+                                  ) {
+                                    final switchIndex = entry.key;
+                                    final sw = entry.value;
+                                    final mqttState = deviceMac.isEmpty
+                                        ? null
+                                        : mqtt.getState(deviceMac, switchIndex);
+
+                                    return {
+                                      'label': sw.label,
+                                      'isOn': mqttState?.isOn ?? sw.isOn,
+                                    };
+                                  });
+                                })
+                                .toList(growable: false);
+
+                            final totalSwitches = switchDots.length;
+                            final activeSwitches = switchDots
+                                .where((dot) => dot['isOn'] == true)
+                                .length;
+                            final visibleDots = switchDots.take(8).toList();
+                            final hiddenDots =
+                                totalSwitches - visibleDots.length;
 
                             for (final device in roomDevices) {
                               final macId = device.macId;
@@ -690,47 +719,62 @@ class _RoomsScreenState extends State<RoomsScreen> {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                Text(
+                                  '$activeSwitches of $totalSwitches switches on',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
                                 Wrap(
                                   spacing: 4,
                                   runSpacing: 4,
-                                  children: roomDevices.expand((device) {
-                                    final deviceMac = device.macId ?? '';
-                                    return device.switches.asMap().entries.map((
-                                      entry,
-                                    ) {
-                                      final switchIndex = entry.key;
-                                      final sw = entry.value;
-                                      final mqttState = deviceMac.isEmpty
-                                          ? null
-                                          : mqtt.getState(
-                                              deviceMac,
-                                              switchIndex,
-                                            );
-                                      final isOn = mqttState?.isOn ?? sw.isOn;
-
+                                  children: [
+                                    ...visibleDots.map((dot) {
+                                      final isOn = dot['isOn'] == true;
                                       return Tooltip(
-                                        message: sw.label,
+                                        message: dot['label'] as String,
                                         child: Container(
                                           width: 10,
                                           height: 10,
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
                                             color: isOn
-                                                ? Theme.of(context).primaryColor
-                                                : Colors.grey.shade300,
+                                                ? cs.primary
+                                                : cs.surfaceContainerHighest,
                                             border: Border.all(
                                               color: isOn
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).primaryColor
-                                                  : Colors.grey.shade400,
+                                                  ? cs.primary
+                                                  : cs.outline,
                                               width: 0.5,
                                             ),
                                           ),
                                         ),
                                       );
-                                    });
-                                  }).toList(),
+                                    }),
+                                    if (hiddenDots > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerHighest,
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '+$hiddenDots',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                                 const SizedBox(height: 8),
                                 OutlinedButton.icon(

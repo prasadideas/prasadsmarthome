@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'main_shell.dart';
 import 'screens/login_screen.dart';
 import 'services/firestore_service.dart';
@@ -16,6 +17,9 @@ late final SceneScheduler sceneScheduler;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
   final firestoreService = FirestoreService();
   _mqttService = MqttService(firestoreService: firestoreService);
   sceneScheduler = SceneScheduler(

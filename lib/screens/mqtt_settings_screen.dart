@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/mqtt_provider.dart';
 import '../services/mqtt_service.dart';
+import '../widgets/firestore_metrics_card.dart';
 
 class MqttSettingsScreen extends StatefulWidget {
   const MqttSettingsScreen({super.key});
@@ -42,9 +43,9 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
   Future<void> _loadSettings() async {
     final mqtt = MqttProvider.read(context);
     final prefs = await MqttService.loadHeartbeatSettings();
-    
+
     if (!mounted) return;
-    
+
     _hostController.text = mqtt.brokerHost;
     _portController.text = mqtt.brokerPort.toString();
     _apiKeyController.text = mqtt.apiKey;
@@ -154,14 +155,21 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
             ),
           ),
 
+          const SizedBox(height: 16),
+
+          const FirestoreMetricsCard(screenLabel: 'MQTT Settings'),
+
           const SizedBox(height: 24),
 
           // ── Broker presets ───────────────────────────────────
-          Text('Quick select broker',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: cs.onSurface.withOpacity(0.55))),
+          Text(
+            'Quick select broker',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(0.55),
+            ),
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -170,8 +178,7 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
               return ChoiceChip(
                 label: Text(preset['label']!),
                 selected: active,
-                onSelected: (_) =>
-                    _applyPreset(preset.cast<String, String>()),
+                onSelected: (_) => _applyPreset(preset.cast<String, String>()),
               );
             }).toList(),
           ),
@@ -179,11 +186,14 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
           const SizedBox(height: 20),
 
           // ── Host / Port ──────────────────────────────────────
-          Text('Broker',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: cs.onSurface.withOpacity(0.55))),
+          Text(
+            'Broker',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(0.55),
+            ),
+          ),
           const SizedBox(height: 12),
 
           TextFormField(
@@ -225,18 +235,22 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
             subtitle: const Text('Switches port to 8883'),
             secondary: const Icon(Icons.lock_outline),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: cs.outlineVariant)),
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: cs.outlineVariant),
+            ),
           ),
 
           const SizedBox(height: 24),
 
           // ── API key ──────────────────────────────────────────
-          Text('Security',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: cs.onSurface.withOpacity(0.55))),
+          Text(
+            'Security',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(0.55),
+            ),
+          ),
           const SizedBox(height: 12),
 
           TextFormField(
@@ -262,11 +276,14 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Topic format',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface.withOpacity(0.45))),
+                Text(
+                  'Topic format',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface.withOpacity(0.45),
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   'Control: smarthome/{apiKey}/{mac}/control\n'
@@ -284,11 +301,14 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
           const SizedBox(height: 28),
 
           // ── Heartbeat & Timeout ──────────────────────────────
-          Text('Heartbeat Detection',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: cs.onSurface.withOpacity(0.55))),
+          Text(
+            'Heartbeat Detection',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: cs.onSurface.withOpacity(0.55),
+            ),
+          ),
           const SizedBox(height: 12),
 
           TextFormField(
@@ -312,7 +332,8 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
               hintText: '60',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.timer_off),
-              helperText: 'Mark device offline if no heartbeat after this duration',
+              helperText:
+                  'Mark device offline if no heartbeat after this duration',
             ),
           ),
 
@@ -331,8 +352,7 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
               child: Text(
                 _statusMessage!,
                 style: TextStyle(
-                  color:
-                      _statusOk ? Colors.green : cs.onErrorContainer,
+                  color: _statusOk ? Colors.green : cs.onErrorContainer,
                 ),
               ),
             ),
@@ -351,12 +371,13 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.wifi),
                   label: Text(_connecting ? 'Connecting…' : 'Connect'),
                   style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                 ),
               ),
               if (mqtt.isConnected) ...[

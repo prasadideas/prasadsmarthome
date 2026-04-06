@@ -226,6 +226,8 @@ class _SwitchTileState extends State<SwitchTile>
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
+            _buildIconWidget(cs, color: textColor, size: 18),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 widget.switchModel.label,
@@ -397,14 +399,14 @@ class _SwitchTileState extends State<SwitchTile>
     );
   }
 
-  Widget _buildIconWidget(ColorScheme cs) {
+  Widget _buildIconWidget(ColorScheme cs, {Color? color, double size = 22}) {
     final iconCode =
         int.tryParse(widget.switchModel.icon) ??
         Icons.lightbulb_outline.codePoint;
     return Icon(
       IconData(iconCode, fontFamily: 'MaterialIcons'),
-      color: _isOn ? cs.primary : cs.onSurfaceVariant,
-      size: 22,
+      color: color ?? (_isOn ? cs.primary : cs.onSurfaceVariant),
+      size: size,
     );
   }
 }

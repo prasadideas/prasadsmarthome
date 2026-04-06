@@ -48,8 +48,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.meeting_room_outlined,
-                  color: Colors.orange),
+              leading: const Icon(
+                Icons.meeting_room_outlined,
+                color: Colors.orange,
+              ),
               title: const Text('Assign to Room'),
               onTap: () {
                 Navigator.pop(context);
@@ -58,8 +60,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete Device',
-                  style: TextStyle(color: Colors.red)),
+              title: const Text(
+                'Delete Device',
+                style: TextStyle(color: Colors.red),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _confirmDelete(device);
@@ -80,17 +84,23 @@ class _DevicesScreenState extends State<DevicesScreen> {
         content: TextField(
           controller: nameController,
           decoration: const InputDecoration(
-              border: OutlineInputBorder(), labelText: 'Device name'),
+            border: OutlineInputBorder(),
+            labelText: 'Device name',
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () async {
               if (nameController.text.trim().isNotEmpty) {
                 await _firestoreService.updateDevice(
-                    uid, device.deviceId, nameController.text.trim());
+                  uid,
+                  device.deviceId,
+                  nameController.text.trim(),
+                );
                 if (context.mounted) Navigator.pop(context);
               }
             },
@@ -125,36 +135,54 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     onTap: () async {
                       if (device.linkedRoom != null) {
                         await _firestoreService.removeDeviceRefFromRoom(
-                            uid, widget.home.homeId, device.linkedRoom!,
-                            device.deviceId);
+                          uid,
+                          widget.home.homeId,
+                          device.linkedRoom!,
+                          device.deviceId,
+                        );
                       }
                       await _firestoreService.assignDeviceToRoom(
-                          uid, device.deviceId, null, null);
+                        uid,
+                        device.deviceId,
+                        null,
+                        null,
+                      );
                       if (context.mounted) Navigator.pop(context);
                     },
                   ),
                   const Divider(),
-                  ...rooms.map((room) => ListTile(
-                        leading: const Icon(Icons.meeting_room_outlined),
-                        title: Text(room.roomName),
-                        selected: device.linkedRoom == room.roomId,
-                        selectedColor: Colors.blue,
-                        onTap: () async {
-                          if (device.linkedRoom != null &&
-                              device.linkedRoom != room.roomId) {
-                            await _firestoreService.removeDeviceRefFromRoom(
-                                uid, widget.home.homeId, device.linkedRoom!,
-                                device.deviceId);
-                          }
-                          await _firestoreService.assignDeviceToRoom(
-                              uid, device.deviceId, room.roomId,
-                              widget.home.homeId);
-                          await _firestoreService.addDeviceRefToRoom(
-                              uid, widget.home.homeId, room.roomId,
-                              device.deviceId);
-                          if (context.mounted) Navigator.pop(context);
-                        },
-                      )),
+                  ...rooms.map(
+                    (room) => ListTile(
+                      leading: const Icon(Icons.meeting_room_outlined),
+                      title: Text(room.roomName),
+                      selected: device.linkedRoom == room.roomId,
+                      selectedColor: Colors.blue,
+                      onTap: () async {
+                        if (device.linkedRoom != null &&
+                            device.linkedRoom != room.roomId) {
+                          await _firestoreService.removeDeviceRefFromRoom(
+                            uid,
+                            widget.home.homeId,
+                            device.linkedRoom!,
+                            device.deviceId,
+                          );
+                        }
+                        await _firestoreService.assignDeviceToRoom(
+                          uid,
+                          device.deviceId,
+                          room.roomId,
+                          widget.home.homeId,
+                        );
+                        await _firestoreService.addDeviceRefToRoom(
+                          uid,
+                          widget.home.homeId,
+                          room.roomId,
+                          device.deviceId,
+                        );
+                        if (context.mounted) Navigator.pop(context);
+                      },
+                    ),
+                  ),
                 ],
               ),
             );
@@ -205,7 +233,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _showEditSwitchDialog(device, index, switchModel, commonIcons);
+                  _showEditSwitchDialog(
+                    device,
+                    index,
+                    switchModel,
+                    commonIcons,
+                  );
                 },
               );
             },
@@ -221,8 +254,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
     );
   }
 
-  void _showEditSwitchDialog(DeviceModel device, int switchIndex,
-      SwitchModel switchModel, List<IconData> commonIcons) {
+  void _showEditSwitchDialog(
+    DeviceModel device,
+    int switchIndex,
+    SwitchModel switchModel,
+    List<IconData> commonIcons,
+  ) {
     final labelController = TextEditingController(text: switchModel.label);
     int selectedIconCode =
         int.tryParse(switchModel.icon) ?? Icons.lightbulb_outline.codePoint;
@@ -267,18 +304,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         height: 60,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? Theme.of(dialogContext)
-                                  .colorScheme
-                                  .primaryContainer
-                              : Theme.of(dialogContext)
-                                  .colorScheme
-                                  .surfaceContainer,
+                              ? Theme.of(
+                                  dialogContext,
+                                ).colorScheme.primaryContainer
+                              : Theme.of(
+                                  dialogContext,
+                                ).colorScheme.surfaceContainer,
                           borderRadius: BorderRadius.circular(12),
                           border: isSelected
                               ? Border.all(
-                                  color: Theme.of(dialogContext)
-                                      .colorScheme
-                                      .primary,
+                                  color: Theme.of(
+                                    dialogContext,
+                                  ).colorScheme.primary,
                                   width: 2,
                                 )
                               : null,
@@ -287,9 +324,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           icon,
                           color: isSelected
                               ? Theme.of(dialogContext).colorScheme.primary
-                              : Theme.of(dialogContext)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              : Theme.of(
+                                  dialogContext,
+                                ).colorScheme.onSurfaceVariant,
                           size: 28,
                         ),
                       ),
@@ -325,9 +362,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
                   }
                 }
               },
@@ -344,24 +381,26 @@ class _DevicesScreenState extends State<DevicesScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Device'),
-        content:
-            Text('Delete "${device.deviceName}"? This cannot be undone.'),
+        content: Text('Delete "${device.deviceName}"? This cannot be undone.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () async {
               if (device.linkedRoom != null) {
                 await _firestoreService.removeDeviceRefFromRoom(
-                    uid, widget.home.homeId, device.linkedRoom!,
-                    device.deviceId);
+                  uid,
+                  widget.home.homeId,
+                  device.linkedRoom!,
+                  device.deviceId,
+                );
               }
               await _firestoreService.deleteDevice(uid, device.deviceId);
               if (context.mounted) Navigator.pop(context);
             },
-            child:
-                const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -387,8 +426,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => AddDeviceScreen(
-                        home: widget.home, room: widget.room),
+                    builder: (_) =>
+                        AddDeviceScreen(home: widget.home, room: widget.room),
                   ),
                 );
               }
@@ -396,11 +435,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'add_device',
-                child: Row(children: [
-                  Icon(Icons.add),
-                  SizedBox(width: 12),
-                  Text('Add Device'),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.add),
+                    SizedBox(width: 12),
+                    Text('Add Device'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -419,8 +460,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
           final allDevices = snapshot.data ?? [];
           final devices = widget.room != null
               ? allDevices
-                  .where((d) => d.linkedRoom == widget.room!.roomId)
-                  .toList()
+                    .where((d) => d.linkedRoom == widget.room!.roomId)
+                    .toList()
               : allDevices;
 
           if (devices.isEmpty) {
@@ -428,17 +469,24 @@ class _DevicesScreenState extends State<DevicesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.devices, size: 64,
-                      color: cs.onSurface.withOpacity(0.3)),
+                  Icon(
+                    Icons.devices,
+                    size: 64,
+                    color: cs.onSurface.withOpacity(0.3),
+                  ),
                   const SizedBox(height: 16),
-                  Text('No devices yet',
-                      style: TextStyle(
-                          fontSize: 18,
-                          color: cs.onSurface.withOpacity(0.5))),
+                  Text(
+                    'No devices yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: cs.onSurface.withOpacity(0.5),
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Text('Tap ⋮ to add a device',
-                      style: TextStyle(
-                          color: cs.onSurface.withOpacity(0.4))),
+                  Text(
+                    'Tap ⋮ to add a device',
+                    style: TextStyle(color: cs.onSurface.withOpacity(0.4)),
+                  ),
                 ],
               ),
             );
@@ -450,8 +498,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final device = devices[index];
-              return _DeviceCard(device: device, cs: cs,
-                  onOptions: () => _showDeviceOptions(device));
+              return _DeviceCard(
+                device: device,
+                cs: cs,
+                onOptions: () => _showDeviceOptions(device),
+              );
             },
           );
         },
@@ -478,7 +529,9 @@ class _DeviceCard extends StatelessWidget {
     // Get MQTT provider for device online status
     final mqtt = MqttProvider.of(context);
     final macId = device.macId ?? '';
-    final isDeviceOnline = macId.isNotEmpty ? mqtt.isDeviceOnline(macId) : false;
+    final isDeviceOnline = macId.isNotEmpty
+        ? mqtt.isDeviceOnline(macId)
+        : false;
 
     return Container(
       decoration: BoxDecoration(
@@ -494,8 +547,7 @@ class _DeviceCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
             child: Row(
               children: [
-                Icon(Icons.developer_board,
-                    color: cs.primary, size: 20),
+                Icon(Icons.developer_board, color: cs.primary, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -510,7 +562,9 @@ class _DeviceCard extends StatelessWidget {
                 // Online status chip - using MQTT online status
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: isDeviceOnline
                         ? Colors.green.withOpacity(0.12)
@@ -544,8 +598,10 @@ class _DeviceCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.more_vert,
-                      color: cs.onSurface.withOpacity(0.6)),
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: cs.onSurface.withOpacity(0.6),
+                  ),
                   onPressed: onOptions,
                 ),
               ],
@@ -557,7 +613,60 @@ class _DeviceCard extends StatelessWidget {
           // Switch tiles
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: _buildSwitchGrid(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSwitchGrid(context),
+                if (device.sensors.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Sensors',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: device.sensors.map((sensor) {
+                      final iconCode =
+                          int.tryParse(sensor.icon) ?? Icons.sensors.codePoint;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              IconData(iconCode, fontFamily: 'MaterialIcons'),
+                              size: 16,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              sensor.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),
@@ -581,7 +690,9 @@ class _DeviceCard extends StatelessWidget {
     // Get MQTT provider for device online status
     final mqtt = MqttProvider.of(context);
     final macId = device.macId ?? '';
-    final isDeviceOnline = macId.isNotEmpty ? mqtt.isDeviceOnline(macId) : false;
+    final isDeviceOnline = macId.isNotEmpty
+        ? mqtt.isDeviceOnline(macId)
+        : false;
 
     return Column(
       children: [
@@ -622,18 +733,24 @@ class _DeviceCard extends StatelessWidget {
           ...(() {
             final macId = device.macId;
             if (macId == null || macId.isEmpty) {
-              return [const ListTile(
-                title: Text('Device missing MAC ID'),
-                leading: Icon(Icons.error_outline, color: Colors.red),
-              )];
+              return [
+                const ListTile(
+                  title: Text('Device missing MAC ID'),
+                  leading: Icon(Icons.error_outline, color: Colors.red),
+                ),
+              ];
             }
-            return sliderSwitches.map((switchIndex) => SwitchTile(
-                  deviceMac: macId,
-                  switchIndex: switchIndex,
-                  switchModel: device.switches[switchIndex],
-                  compact: false,
-                  isDeviceOnline: isDeviceOnline,
-                )).toList();
+            return sliderSwitches
+                .map(
+                  (switchIndex) => SwitchTile(
+                    deviceMac: macId,
+                    switchIndex: switchIndex,
+                    switchModel: device.switches[switchIndex],
+                    compact: false,
+                    isDeviceOnline: isDeviceOnline,
+                  ),
+                )
+                .toList();
           })(),
         ],
       ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mqtt_client/mqtt_client.dart';
@@ -63,6 +64,7 @@ class MqttService extends ChangeNotifier {
   int brokerPort;
   String apiKey; // embedded in topic path for security
   bool useTls;
+  final bool persistDeviceStatusToFirestore;
   Duration timeoutDuration;
   Duration heartbeatInterval;
   Duration offlineTimeout;
@@ -89,6 +91,9 @@ class MqttService extends ChangeNotifier {
   // deviceId → offline detection timer
   final Map<String, Timer> _heartbeatTimeouts = {};
 
+  // deviceId → last status written to Firestore when persistence is enabled
+  final Map<String, bool> _persistedDeviceStatuses = {};
+
   // Broadcast stream so multiple widgets can listen
   final _stateController =
       StreamController<Map<SwitchKey, SwitchState>>.broadcast();
@@ -106,6 +111,7 @@ class MqttService extends ChangeNotifier {
     this.brokerPort = 1883,
     this.apiKey = 'smarthome_default',
     this.useTls = false,
+    this.persistDeviceStatusToFirestore = false,
     this.timeoutDuration = const Duration(seconds: 10),
     this.heartbeatInterval = const Duration(seconds: 30),
     this.offlineTimeout = const Duration(seconds: 60),
@@ -137,6 +143,8 @@ class MqttService extends ChangeNotifier {
   Future<bool> connect() async {
     await disconnect(); // clean slate
     _lastError = null;
+    Object? zoneError;
+    StackTrace? zoneStackTrace;
 
     // Unique client ID prevents "client already connected" rejections
     final clientId =
@@ -174,15 +182,38 @@ class MqttService extends ChangeNotifier {
     _client!.connectionMessage = connMessage;
 
     try {
-      await _client!.connect();
+      await runZonedGuarded<Future<void>>(
+        () async {
+          await _client!.connect();
+        },
+        (error, stackTrace) {
+          zoneError ??= error;
+          zoneStackTrace ??= stackTrace;
+        },
+      );
     } on NoConnectionException catch (e) {
       _lastError = 'NoConnectionException: $e';
+      debugPrint('[MQTT] $_lastError');
+      _cleanup();
+      return false;
+    } on SocketException catch (e) {
+      _lastError = 'SocketException: $e';
       debugPrint('[MQTT] $_lastError');
       _cleanup();
       return false;
     } catch (e) {
       _lastError = e.toString();
       debugPrint('[MQTT] Connect error: $e');
+      _cleanup();
+      return false;
+    }
+
+    if (zoneError != null) {
+      _lastError = zoneError.toString();
+      debugPrint('[MQTT] Connect zone error: $zoneError');
+      if (zoneStackTrace != null) {
+        debugPrint(zoneStackTrace.toString());
+      }
       _cleanup();
       return false;
     }
@@ -452,6 +483,15 @@ class MqttService extends ChangeNotifier {
 
   void _updateDeviceStatus(String macAddress, bool isOnline) async {
     try {
+      if (!persistDeviceStatusToFirestore) {
+        return;
+      }
+
+      final previousStatus = _persistedDeviceStatuses[macAddress];
+      if (previousStatus == isOnline) {
+        return;
+      }
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) {
         debugPrint(
@@ -467,6 +507,7 @@ class MqttService extends ChangeNotifier {
         // Mark device offline by MAC address
         await _firestoreService.markDeviceOfflineByMac(uid, macAddress);
       }
+      _persistedDeviceStatuses[macAddress] = isOnline;
       debugPrint(
         '[MQTT] Device $macAddress status updated: ${isOnline ? 'online' : 'offline'}',
       );

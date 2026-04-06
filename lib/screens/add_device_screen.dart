@@ -24,10 +24,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   int _step = 1;
 
   late List<_EditableSwitch> _editableSwitches;
+  late List<_EditableSensor> _editableSensors;
   final _deviceNameController = TextEditingController();
   final _macIdController = TextEditingController();
   bool _assignToRoom = false;
   bool _saving = false;
+  final List<SensorTemplate> _sensorTemplates =
+      SensorTemplateCatalog.generalSensors;
 
   final List<Map<String, dynamic>> _switchIcons = [
     {'icon': Icons.lightbulb_outline, 'label': 'Light'},
@@ -48,18 +51,32 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     {'icon': Icons.bathroom, 'label': 'Bathroom'},
   ];
 
+  late final List<Map<String, dynamic>> _sensorIcons = _sensorTemplates
+      .map((sensor) => {'icon': sensor.icon, 'label': sensor.label})
+      .toList();
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
   void _selectTemplate(DeviceTemplate template) {
     setState(() {
       _selectedTemplate = template;
       _deviceNameController.text = template.name;
       _assignToRoom = widget.room != null;
       _editableSwitches = template.switches
-          .map((s) => _EditableSwitch(
-                switchId: s.switchId,
-                label: s.label,
-                type: s.type,
-                icon: s.icon,
-              ))
+          .map(
+            (s) => _EditableSwitch(
+              switchId: s.switchId,
+              label: s.label,
+              type: s.type,
+              icon: s.icon,
+            ),
+          )
+          .toList();
+      _editableSensors = template.sensors
+          .map((sensor) => _EditableSensor.fromTemplate(sensor))
           .toList();
       _step = 2;
     });
@@ -72,31 +89,53 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
       );
       return;
     }
-    
+
     if (_macIdController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('MAC ID is required for MQTT communication')),
+        const SnackBar(
+          content: Text('MAC ID is required for MQTT communication'),
+        ),
       );
       return;
     }
-    
+
     setState(() => _saving = true);
 
     final switches = _editableSwitches
-        .map((s) => SwitchModel(
-              switchId: s.switchId,
-              label: s.label,
-              isOn: false,
-              type: s.type.name,
-              icon: s.icon.codePoint.toString(),
-              value: 0,
-            ))
+        .map(
+          (s) => SwitchModel(
+            switchId: s.switchId,
+            label: s.label,
+            isOn: false,
+            type: s.type.name,
+            icon: s.icon.codePoint.toString(),
+            value: 0,
+          ),
+        )
         .toList();
 
-    final roomRef =
-        (_assignToRoom && widget.room != null) ? widget.room!.roomId : null;
-    final homeRef =
-        (_assignToRoom && widget.room != null) ? widget.home.homeId : null;
+    final sensors = _editableSensors
+        .map(
+          (sensor) => SensorModel(
+            sensorId: sensor.sensorId,
+            label: sensor.label,
+            type: sensor.type,
+            unit: sensor.unit,
+            icon: sensor.icon.codePoint.toString(),
+            value: sensor.defaultValue,
+            minValue: sensor.minValue,
+            maxValue: sensor.maxValue,
+            step: sensor.step,
+          ),
+        )
+        .toList();
+
+    final roomRef = (_assignToRoom && widget.room != null)
+        ? widget.room!.roomId
+        : null;
+    final homeRef = (_assignToRoom && widget.room != null)
+        ? widget.home.homeId
+        : null;
 
     final deviceId = await _firestoreService.addDevice(
       uid,
@@ -107,15 +146,22 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         isOnline: false,
         ownedBy: uid,
         switches: switches,
+        sensors: sensors,
         linkedRoom: roomRef,
         linkedHome: homeRef,
-        macId: _macIdController.text.trim().isNotEmpty ? _macIdController.text.trim() : null,
+        macId: _macIdController.text.trim().isNotEmpty
+            ? _macIdController.text.trim()
+            : null,
       ),
     );
 
     if (_assignToRoom && widget.room != null) {
       await _firestoreService.addDeviceRefToRoom(
-          uid, widget.home.homeId, widget.room!.roomId, deviceId);
+        uid,
+        widget.home.homeId,
+        widget.room!.roomId,
+        deviceId,
+      );
     }
 
     if (mounted) Navigator.pop(context);
@@ -155,7 +201,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         }
         if (snapshot.hasError) {
           return Center(
-              child: Text('Error loading templates: ${snapshot.error}'));
+            child: Text('Error loading templates: ${snapshot.error}'),
+          );
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
@@ -164,11 +211,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
               children: [
                 Icon(Icons.devices, size: 48, color: Colors.grey),
                 SizedBox(height: 12),
-                Text('No device types available',
-                    style: TextStyle(color: Colors.grey)),
+                Text(
+                  'No device types available',
+                  style: TextStyle(color: Colors.grey),
+                ),
                 SizedBox(height: 4),
-                Text('Contact admin to add device templates',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  'Contact admin to add device templates',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ),
           );
@@ -181,8 +232,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: categories.map((cat) {
-            final catTemplates =
-                templates.where((t) => t.category == cat).toList();
+            final catTemplates = templates
+                .where((t) => t.category == cat)
+                .toList();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -201,8 +253,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
@@ -216,8 +267,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                       onTap: () => _selectTemplate(t),
                       child: Container(
                         decoration: BoxDecoration(
-                          border:
-                              Border.all(color: cs.outlineVariant),
+                          border: Border.all(color: cs.outlineVariant),
                           borderRadius: BorderRadius.circular(12),
                           color: cs.surface,
                         ),
@@ -225,19 +275,23 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(t.icon,
-                                size: 28, color: cs.primary),
+                            Icon(t.icon, size: 28, color: cs.primary),
                             const Spacer(),
-                            Text(t.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13)),
+                            Text(
+                              t.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
                             const SizedBox(height: 2),
-                            Text('${t.switches.length} controls',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurface
-                                        .withOpacity(0.45))),
+                            Text(
+                              '${t.switches.length} controls • ${t.sensors.length} sensors',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withOpacity(0.45),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -257,6 +311,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   Widget _buildStep2() {
     final cs = Theme.of(context).colorScheme;
+    final selectedSensorTypes = _editableSensors
+        .map((sensor) => sensor.type)
+        .toSet();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -295,12 +352,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
         const SizedBox(height: 16),
 
-        const Text('Configure switches',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        const Text(
+          'Configure switches',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
         const SizedBox(height: 4),
-        Text('Tap a toggle/dimmer switch to rename or change icon',
-            style: TextStyle(
-                fontSize: 13, color: cs.onSurface.withOpacity(0.5))),
+        Text(
+          'Tap a toggle/dimmer switch to rename or change icon',
+          style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.5)),
+        ),
         const SizedBox(height: 12),
 
         // Render each switch preview
@@ -324,24 +384,101 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor:
-                    _switchTypeColor(sw.type).withOpacity(0.15),
-                child: Icon(sw.icon,
-                    color: _switchTypeColor(sw.type), size: 20),
+                backgroundColor: _switchTypeColor(sw.type).withOpacity(0.15),
+                child: Icon(
+                  sw.icon,
+                  color: _switchTypeColor(sw.type),
+                  size: 20,
+                ),
               ),
-              title: Text(sw.label,
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
+              title: Text(
+                sw.label,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
               subtitle: Text(
                 sw.type.name[0].toUpperCase() + sw.type.name.substring(1),
                 style: TextStyle(
-                    fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+                  fontSize: 12,
+                  color: cs.onSurface.withOpacity(0.5),
+                ),
               ),
-              trailing:
-                  const Icon(Icons.edit, size: 18, color: Colors.grey),
+              trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
               onTap: () => _showEditSwitchDialog(i),
             ),
           );
         }),
+
+        const SizedBox(height: 16),
+
+        const Text(
+          'Configure sensors',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Tap sensor chips to add or remove. Tap sensor card to rename or change icon.',
+          style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.5)),
+        ),
+        const SizedBox(height: 12),
+
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _sensorTemplates.map((sensor) {
+            final isSelected = selectedSensorTypes.contains(sensor.type);
+            return FilterChip(
+              avatar: Icon(
+                sensor.icon,
+                size: 18,
+                color: isSelected ? cs.onPrimaryContainer : cs.primary,
+              ),
+              label: Text(sensor.label),
+              selected: isSelected,
+              selectedColor: cs.primaryContainer,
+              checkmarkColor: cs.onPrimaryContainer,
+              onSelected: (selected) =>
+                  _toggleSensorSelection(sensor, selected),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+
+        if (_editableSensors.isEmpty)
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.sensors, color: cs.onSurfaceVariant),
+              title: const Text('No sensors selected'),
+              subtitle: const Text('Add sensors from chips above.'),
+            ),
+          )
+        else
+          ..._editableSensors.asMap().entries.map((entry) {
+            final sensor = entry.value;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: cs.primaryContainer,
+                  child: Icon(sensor.icon, color: cs.primary, size: 20),
+                ),
+                title: Text(
+                  sensor.label,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  sensor.unit.isEmpty
+                      ? _sensorTypeLabel(sensor.type)
+                      : '${_sensorTypeLabel(sensor.type)} • ${sensor.unit}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
+                onTap: () => _showEditSensorDialog(entry.key),
+              ),
+            );
+          }),
 
         const SizedBox(height: 24),
 
@@ -350,14 +487,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
           child: ElevatedButton(
             onPressed: _saving ? null : _saveDevice,
             style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
             child: _saving
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Add Device',
-                    style: TextStyle(fontSize: 16)),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Add Device', style: TextStyle(fontSize: 16)),
           ),
         ),
       ],
@@ -366,16 +504,34 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   // ── Edit toggle switch dialog ──────────────────────────────
 
-  void _showEditSwitchDialog(int index) {
-    final sw = _editableSwitches[index];
-    final labelController = TextEditingController(text: sw.label);
-    IconData selectedIcon = sw.icon;
+  void _toggleSensorSelection(SensorTemplate template, bool selected) {
+    setState(() {
+      if (selected) {
+        final alreadySelected = _editableSensors.any(
+          (sensor) => sensor.type == template.type,
+        );
+        if (!alreadySelected) {
+          _editableSensors.add(_EditableSensor.fromTemplate(template));
+        }
+        return;
+      }
+
+      _editableSensors.removeWhere((sensor) => sensor.type == template.type);
+    });
+  }
+
+  void _showEditSensorDialog(int index) {
+    final sensor = _editableSensors[index];
+    final labelController = TextEditingController(text: sensor.label);
+    IconData selectedIcon = sensor.icon;
+    final cs = Theme.of(context).colorScheme;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => StatefulBuilder(
         builder: (context, setSheet) => Padding(
           padding: EdgeInsets.only(
@@ -388,19 +544,128 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Edit switch',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Edit sensor',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: labelController,
                 decoration: const InputDecoration(
-                    labelText: 'Switch label',
-                    border: OutlineInputBorder()),
+                  labelText: 'Sensor label',
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 16),
-              const Text('Icon',
-                  style: TextStyle(fontWeight: FontWeight.w500)),
+              const Text('Icon', style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _sensorIcons.map((item) {
+                  final isSelected = selectedIcon == item['icon'];
+                  return GestureDetector(
+                    onTap: () =>
+                        setSheet(() => selectedIcon = item['icon'] as IconData),
+                    child: Container(
+                      width: 64,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? cs.primaryContainer
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected ? cs.primary : cs.outlineVariant,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            item['icon'] as IconData,
+                            size: 20,
+                            color: isSelected
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item['label'] as String,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _editableSensors[index].label =
+                          labelController.text.trim().isEmpty
+                          ? sensor.label
+                          : labelController.text.trim();
+                      _editableSensors[index].icon = selectedIcon;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditSwitchDialog(int index) {
+    final sw = _editableSwitches[index];
+    final labelController = TextEditingController(text: sw.label);
+    IconData selectedIcon = sw.icon;
+    final cs = Theme.of(context).colorScheme;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Edit switch',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: labelController,
+                decoration: const InputDecoration(
+                  labelText: 'Switch label',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Icon', style: TextStyle(fontWeight: FontWeight.w500)),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 10,
@@ -408,35 +673,38 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                 children: _switchIcons.map((item) {
                   final isSelected = selectedIcon == item['icon'];
                   return GestureDetector(
-                    onTap: () => setSheet(
-                        () => selectedIcon = item['icon'] as IconData),
+                    onTap: () =>
+                        setSheet(() => selectedIcon = item['icon'] as IconData),
                     child: Container(
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? Theme.of(context)
-                                .primaryColor
-                                .withOpacity(0.1)
-                            : Colors.grey.shade100,
+                            ? cs.primaryContainer
+                            : cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isSelected
-                              ? Theme.of(context).primaryColor
-                              : Colors.grey.shade300,
+                          color: isSelected ? cs.primary : cs.outlineVariant,
                         ),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(item['icon'] as IconData,
-                              size: 20,
-                              color: isSelected
-                                  ? Theme.of(context).primaryColor
-                                  : Colors.grey),
+                          Icon(
+                            item['icon'] as IconData,
+                            size: 20,
+                            color: isSelected
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                          ),
                           const SizedBox(height: 2),
-                          Text(item['label'] as String,
-                              style: const TextStyle(fontSize: 8)),
+                          Text(
+                            item['label'] as String,
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -451,8 +719,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                     setState(() {
                       _editableSwitches[index].label =
                           labelController.text.trim().isEmpty
-                              ? sw.label
-                              : labelController.text.trim();
+                          ? sw.label
+                          : labelController.text.trim();
                       _editableSwitches[index].icon = selectedIcon;
                     });
                     Navigator.pop(context);
@@ -481,6 +749,11 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         return Colors.green;
     }
   }
+
+  String _sensorTypeLabel(String type) {
+    final normalized = type.replaceAll('-', ' ');
+    return normalized[0].toUpperCase() + normalized.substring(1);
+  }
 }
 
 // ── Fan switch preview (ON/OFF + 0-5 speed slider) ─────────────
@@ -490,8 +763,11 @@ class _FanSwitchPreview extends StatefulWidget {
   final int index;
   final ColorScheme cs;
 
-  const _FanSwitchPreview(
-      {required this.sw, required this.index, required this.cs});
+  const _FanSwitchPreview({
+    required this.sw,
+    required this.index,
+    required this.cs,
+  });
 
   @override
   State<_FanSwitchPreview> createState() => _FanSwitchPreviewState();
@@ -524,22 +800,24 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.sw.label,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600)),
-                      Text('Fan — Speed: ${_speed.toInt()}%',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: widget.cs.onSurface
-                                  .withOpacity(0.55))),
+                      Text(
+                        widget.sw.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Fan — Speed: ${_speed.toInt()}%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.cs.onSurface.withOpacity(0.55),
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 // ON / OFF toggle
                 Switch(
                   value: _isOn,
-                  onChanged: (v) =>
-                      setState(() => _isOn = v),
+                  onChanged: (v) => setState(() => _isOn = v),
                 ),
               ],
             ),
@@ -547,9 +825,11 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
             // Speed slider 0-100%
             Row(
               children: [
-                Icon(Icons.speed,
-                    size: 16,
-                    color: widget.cs.onSurface.withOpacity(0.4)),
+                Icon(
+                  Icons.speed,
+                  size: 16,
+                  color: widget.cs.onSurface.withOpacity(0.4),
+                ),
                 Expanded(
                   child: Slider(
                     value: _speed,
@@ -557,11 +837,10 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
                     max: 100,
                     divisions: 20,
                     label: 'Speed ${_speed.toInt()}%',
-                    onChanged: (v) =>
-                        setState(() {
-                          _speed = v;
-                          if (v > 0) _isOn = true;
-                        }),
+                    onChanged: (v) => setState(() {
+                      _speed = v;
+                      if (v > 0) _isOn = true;
+                    }),
                   ),
                 ),
                 SizedBox(
@@ -569,8 +848,9 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
                   child: Text(
                     _speed.toInt().toString(),
                     style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: widget.cs.primary),
+                      fontWeight: FontWeight.bold,
+                      color: widget.cs.primary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -579,8 +859,9 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
             Text(
               'Preview only — actual values set when device is used',
               style: TextStyle(
-                  fontSize: 10,
-                  color: widget.cs.onSurface.withOpacity(0.35)),
+                fontSize: 10,
+                color: widget.cs.onSurface.withOpacity(0.35),
+              ),
             ),
           ],
         ),
@@ -596,8 +877,11 @@ class _DimmerSwitchPreview extends StatefulWidget {
   final int index;
   final ColorScheme cs;
 
-  const _DimmerSwitchPreview(
-      {required this.sw, required this.index, required this.cs});
+  const _DimmerSwitchPreview({
+    required this.sw,
+    required this.index,
+    required this.cs,
+  });
 
   @override
   State<_DimmerSwitchPreview> createState() => _DimmerSwitchPreviewState();
@@ -622,22 +906,28 @@ class _DimmerSwitchPreviewState extends State<_DimmerSwitchPreview> {
               children: [
                 CircleAvatar(
                   backgroundColor: Colors.orange.withOpacity(0.15),
-                  child: const Icon(Icons.wb_sunny_outlined,
-                      color: Colors.orange, size: 20),
+                  child: const Icon(
+                    Icons.wb_sunny_outlined,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.sw.label,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600)),
-                      Text('Dimmer — ${_brightness.toInt()}%',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: widget.cs.onSurface
-                                  .withOpacity(0.55))),
+                      Text(
+                        widget.sw.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Dimmer — ${_brightness.toInt()}%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: widget.cs.onSurface.withOpacity(0.55),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -646,9 +936,11 @@ class _DimmerSwitchPreviewState extends State<_DimmerSwitchPreview> {
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.brightness_low,
-                    size: 16,
-                    color: widget.cs.onSurface.withOpacity(0.4)),
+                Icon(
+                  Icons.brightness_low,
+                  size: 16,
+                  color: widget.cs.onSurface.withOpacity(0.4),
+                ),
                 Expanded(
                   child: Slider(
                     value: _brightness,
@@ -659,16 +951,19 @@ class _DimmerSwitchPreviewState extends State<_DimmerSwitchPreview> {
                     onChanged: (v) => setState(() => _brightness = v),
                   ),
                 ),
-                Icon(Icons.brightness_high,
-                    size: 16,
-                    color: widget.cs.onSurface.withOpacity(0.4)),
+                Icon(
+                  Icons.brightness_high,
+                  size: 16,
+                  color: widget.cs.onSurface.withOpacity(0.4),
+                ),
               ],
             ),
             Text(
               'Preview only — actual values set when device is used',
               style: TextStyle(
-                  fontSize: 10,
-                  color: widget.cs.onSurface.withOpacity(0.35)),
+                fontSize: 10,
+                color: widget.cs.onSurface.withOpacity(0.35),
+              ),
             ),
           ],
         ),
@@ -691,4 +986,42 @@ class _EditableSwitch {
     required this.type,
     required this.icon,
   });
+}
+
+class _EditableSensor {
+  String sensorId;
+  String label;
+  String type;
+  String unit;
+  IconData icon;
+  double defaultValue;
+  double minValue;
+  double maxValue;
+  double step;
+
+  _EditableSensor({
+    required this.sensorId,
+    required this.label,
+    required this.type,
+    required this.unit,
+    required this.icon,
+    required this.defaultValue,
+    required this.minValue,
+    required this.maxValue,
+    required this.step,
+  });
+
+  factory _EditableSensor.fromTemplate(SensorTemplate template) {
+    return _EditableSensor(
+      sensorId: template.sensorId,
+      label: template.label,
+      type: template.type,
+      unit: template.unit,
+      icon: template.icon,
+      defaultValue: template.defaultValue,
+      minValue: template.minValue,
+      maxValue: template.maxValue,
+      step: template.step,
+    );
+  }
 }

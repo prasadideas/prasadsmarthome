@@ -1,34 +1,40 @@
 {
   "_config": {
+    "broker_host": "test.mosquitto.org",
+    "broker_port": 1883,
+    "api_key": "smarthome_default",
     "heartbeat_interval": 5
   },
   "AA:BB:CC:DD:EE:01": {
     "name": "Living Room Switch",
-    "type": "1-switch",
+    "type": "sw_1",
     "online": true,
     "switches": [
       {
+        "label": "Switch 1",
+        "type": "toggle",
         "isOn": true,
-        "value": 0.0,
-        "type": "toggle"
+        "value": 0.0
       }
     ],
     "sensors": []
   },
   "AA:BB:CC:DD:EE:02": {
     "name": "2-switch",
-    "type": "2-switch",
+    "type": "sw_2",
     "online": true,
     "switches": [
       {
-        "isOn": false,
-        "value": 0.0,
-        "type": "toggle"
+        "label": "Switch 1",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
       },
       {
-        "isOn": true,
-        "value": 0.0,
-        "type": "toggle"
+        "label": "Switch 2",
+        "type": "toggle",
+        "isOn": false,
+        "value": 0.0
       }
     ],
     "sensors": []
@@ -39,21 +45,156 @@
     "online": true,
     "switches": [
       {
+        "label": "Switch 1",
+        "type": "toggle",
         "isOn": true,
-        "value": 0.0,
-        "type": "toggle"
+        "value": 0.0
       },
       {
+        "label": "Switch 2",
+        "type": "toggle",
         "isOn": true,
-        "value": 0.0,
-        "type": "toggle"
+        "value": 0.0
       },
       {
+        "label": "Fan",
+        "type": "fan",
         "isOn": true,
-        "value": 4.0,
-        "type": "fan"
+        "value": 1.0
       }
     ],
     "sensors": []
+  },
+  "AA:BB:CC:DD:EE:04": {
+    "name": "16-SWITCH",
+    "type": "sw_16",
+    "online": true,
+    "switches": [
+      {
+        "label": "Switch 1",
+        "type": "toggle",
+        "isOn": false,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 2",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 3",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 4",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 5",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 6",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 7",
+        "type": "toggle",
+        "isOn": false,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 8",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 9",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 10",
+        "type": "toggle",
+        "isOn": false,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 11",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 12",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 13",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 14",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 15",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      },
+      {
+        "label": "Switch 16",
+        "type": "toggle",
+        "isOn": true,
+        "value": 0.0
+      }
+    ],
+    "sensors": [
+      {
+        "type": "power",
+        "label": "Power",
+        "value": 120.0,
+        "unit": "W",
+        "min": 0.0,
+        "max": 5000.0,
+        "step": 10.0
+      },
+      {
+        "type": "voltage",
+        "label": "Voltage",
+        "value": 230.0,
+        "unit": "V",
+        "min": 0.0,
+        "max": 260.0,
+        "step": 1.0
+      },
+      {
+        "type": "current",
+        "label": "Current",
+        "value": 2.5,
+        "unit": "A",
+        "min": 0.0,
+        "max": 32.0,
+        "step": 0.5
+      }
+    ]
   }
 }

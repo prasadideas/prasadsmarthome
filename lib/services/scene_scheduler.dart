@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../models/scene_model.dart';
 import '../services/firestore_service.dart';
+import '../services/firestore_metrics.dart';
 import '../services/mqtt_service.dart';
 
 class SceneScheduler {
@@ -20,13 +21,15 @@ class SceneScheduler {
   SceneScheduler({
     required FirestoreService firestoreService,
     required MqttService mqttService,
-  })  : _firestoreService = firestoreService,
-        _mqttService = mqttService,
-        _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  }) : _firestoreService = firestoreService,
+       _mqttService = mqttService,
+       _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
     // Initialize notifications
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings();
     const settings = InitializationSettings(
       android: androidSettings,
@@ -43,9 +46,7 @@ class SceneScheduler {
       _taskName,
       _taskName,
       frequency: const Duration(minutes: 15), // Check every 15 minutes
-      constraints: Constraints(
-        networkType: NetworkType.connected,
-      ),
+      constraints: Constraints(networkType: NetworkType.connected),
     );
   }
 
@@ -70,7 +71,9 @@ class SceneScheduler {
   }
 
   Future<void> scheduleScene(SceneModel scene) async {
-    if (!scene.isScheduled || scene.scheduledTime == null || scene.scheduledDays.isEmpty) {
+    if (!scene.isScheduled ||
+        scene.scheduledTime == null ||
+        scene.scheduledDays.isEmpty) {
       return;
     }
 
@@ -80,7 +83,12 @@ class SceneScheduler {
     final scheduledMinute = int.parse(timeParts[1]);
 
     for (final day in scene.scheduledDays) {
-      final nextExecution = _getNextExecutionDate(now, day, scheduledHour, scheduledMinute);
+      final nextExecution = _getNextExecutionDate(
+        now,
+        day,
+        scheduledHour,
+        scheduledMinute,
+      );
       if (nextExecution != null) {
         await _scheduleNotification(scene, nextExecution);
       }
@@ -91,10 +99,17 @@ class SceneScheduler {
     await _notificationsPlugin.cancel(int.parse(sceneId.hashCode.toString()));
   }
 
-  DateTime? _getNextExecutionDate(DateTime now, int weekday, int hour, int minute) {
+  DateTime? _getNextExecutionDate(
+    DateTime now,
+    int weekday,
+    int hour,
+    int minute,
+  ) {
     // weekday: 1=Monday, 7=Sunday
     final daysUntilTarget = (weekday - now.weekday + 7) % 7;
-    final targetDate = now.add(Duration(days: daysUntilTarget == 0 ? 7 : daysUntilTarget));
+    final targetDate = now.add(
+      Duration(days: daysUntilTarget == 0 ? 7 : daysUntilTarget),
+    );
 
     final scheduledTime = DateTime(
       targetDate.year,
@@ -112,7 +127,10 @@ class SceneScheduler {
     return scheduledTime;
   }
 
-  Future<void> _scheduleNotification(SceneModel scene, DateTime executionTime) async {
+  Future<void> _scheduleNotification(
+    SceneModel scene,
+    DateTime executionTime,
+  ) async {
     const androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
@@ -134,7 +152,8 @@ class SceneScheduler {
       tz.TZDateTime.from(executionTime, tz.local),
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
@@ -147,6 +166,10 @@ class SceneScheduler {
           .collection('scenes')
           .doc(sceneId)
           .get();
+      FirestoreMetrics.instance.recordOneTimeRead(
+        'sceneScheduler.executeScene',
+        count: sceneDoc.exists ? 1 : 0,
+      );
 
       if (!sceneDoc.exists) return;
 
@@ -188,7 +211,8 @@ class SceneScheduler {
   Future<void> checkAndExecuteScheduledScenes(String uid) async {
     try {
       final now = DateTime.now();
-      final currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      final currentTime =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       final currentWeekday = now.weekday; // 1=Monday, 7=Sunday
 
       final scenesSnapshot = await FirebaseFirestore.instance
@@ -199,6 +223,10 @@ class SceneScheduler {
           .where('isActive', isEqualTo: true)
           .where('scheduledDays', arrayContains: currentWeekday)
           .get();
+      FirestoreMetrics.instance.recordOneTimeRead(
+        'sceneScheduler.checkScheduledScenes',
+        count: scenesSnapshot.docs.length,
+      );
 
       for (final doc in scenesSnapshot.docs) {
         final scene = SceneModel.fromMap(doc.id, doc.data());
