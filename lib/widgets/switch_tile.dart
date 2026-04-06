@@ -9,11 +9,13 @@ import '../services/mqtt_provider.dart';
 /// - Shows fan slider (0–5 steps) or dimmer slider (0–100) when applicable
 /// - Shows a spinning progress indicator while waiting for device echo
 /// - Allows controlling other switches while one is in progress
+/// - Prevents controlling when device is offline
 class SwitchTile extends StatefulWidget {
   final String deviceMac;    // device's MAC address (used as deviceId)
   final int switchIndex;
   final SwitchModel switchModel; // initial data from Firestore
   final bool compact;           // true = small grid tile, false = full list tile
+  final bool isDeviceOnline;    // whether the device is online
 
   const SwitchTile({
     super.key,
@@ -21,6 +23,7 @@ class SwitchTile extends StatefulWidget {
     required this.switchIndex,
     required this.switchModel,
     this.compact = true,
+    this.isDeviceOnline = true,  // default to online
   });
 
   @override
@@ -95,6 +98,18 @@ class _SwitchTileState extends State<SwitchTile>
   // ── Publish helpers ────────────────────────────────────────
 
   void _toggle(MqttService mqtt) {
+    // Check if device is offline
+    if (!widget.isDeviceOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Device is offline - cannot control'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     mqtt.publishCommand(
       macAddress: widget.deviceMac,
       switchIndex: widget.switchIndex,
@@ -105,6 +120,18 @@ class _SwitchTileState extends State<SwitchTile>
   }
 
   void _setSliderValue(MqttService mqtt, double newVal) {
+    // Check if device is offline
+    if (!widget.isDeviceOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Device is offline - cannot control'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     mqtt.publishCommand(
       macAddress: widget.deviceMac,
       switchIndex: widget.switchIndex,
@@ -136,22 +163,33 @@ class _SwitchTileState extends State<SwitchTile>
   Widget _buildCompactTile(
       MqttService mqtt, ThemeData theme, ColorScheme cs) {
     final onColor = cs.primary;
-    final offColor = cs.surfaceContainerHighest; // visible in both light & dark
+    final offColor = cs.surfaceContainerHighest;
+    final offlineColor = cs.surfaceContainerHighest.withOpacity(0.5);
     final onTextColor = cs.onPrimary;
     final offTextColor = cs.onSurfaceVariant;
+    final offlineTextColor = cs.onSurfaceVariant.withOpacity(0.5);
+
+    final bgColor = !widget.isDeviceOnline
+        ? offlineColor
+        : (_isOn ? onColor : offColor);
+    final textColor = !widget.isDeviceOnline
+        ? offlineTextColor
+        : (_isOn ? onTextColor : offTextColor);
 
     return GestureDetector(
-      onTap: () => _toggle(mqtt),
+      onTap: widget.isDeviceOnline ? () => _toggle(mqtt) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: _isOn ? onColor : offColor,
+          color: bgColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: _isOn ? onColor : cs.outlineVariant,
+            color: widget.isDeviceOnline
+                ? (_isOn ? onColor : cs.outlineVariant)
+                : cs.outlineVariant.withOpacity(0.5),
             width: 1,
           ),
-          boxShadow: _isOn
+          boxShadow: _isOn && widget.isDeviceOnline
               ? [
                   BoxShadow(
                     color: onColor.withOpacity(0.25),
@@ -170,7 +208,7 @@ class _SwitchTileState extends State<SwitchTile>
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
-                  color: _isOn ? onTextColor : offTextColor,
+                  color: textColor,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -187,27 +225,33 @@ class _SwitchTileState extends State<SwitchTile>
 
   Widget _buildFullTile(
       MqttService mqtt, ThemeData theme, ColorScheme cs) {
+    final bgColor = !widget.isDeviceOnline
+        ? cs.surfaceContainerHighest.withOpacity(0.5)
+        : (_isOn ? cs.primaryContainer : cs.surfaceContainerHighest);
+    final textColor = !widget.isDeviceOnline
+        ? cs.onSurfaceVariant.withOpacity(0.5)
+        : (_isOn ? cs.onPrimaryContainer : cs.onSurfaceVariant);
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: _isOn
-          ? cs.primaryContainer
-          : cs.surfaceContainerHighest,
+      color: bgColor,
       child: ListTile(
+        enabled: widget.isDeviceOnline,
         leading: _buildIconWidget(cs),
         title: Text(
           widget.switchModel.label,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: _isOn ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+            color: textColor,
           ),
         ),
         subtitle: Text(
-          _type[0].toUpperCase() + _type.substring(1),
+          widget.isDeviceOnline
+              ? _type[0].toUpperCase() + _type.substring(1)
+              : 'Offline - ${_type[0].toUpperCase() + _type.substring(1)}',
           style: TextStyle(
             fontSize: 12,
-            color: _isOn
-                ? cs.onPrimaryContainer.withOpacity(0.7)
-                : cs.onSurfaceVariant.withOpacity(0.7),
+            color: textColor.withOpacity(0.7),
           ),
         ),
         trailing: _buildStatusIndicator(
@@ -215,7 +259,7 @@ class _SwitchTileState extends State<SwitchTile>
           cs.onPrimaryContainer,
           cs.onSurfaceVariant,
         ),
-        onTap: () => _toggle(mqtt),
+        onTap: widget.isDeviceOnline ? () => _toggle(mqtt) : null,
       ),
     );
   }
@@ -230,11 +274,20 @@ class _SwitchTileState extends State<SwitchTile>
         ? 'Speed: ${_value.toInt()}'
         : 'Brightness: ${_value.toInt()}%';
 
+    // Determine colors based on online status
+    final bgColor = !widget.isDeviceOnline
+        ? cs.surfaceContainerHighest.withOpacity(0.5)
+        : (_isOn ? cs.primaryContainer : cs.surfaceContainerHighest);
+    final textColor = !widget.isDeviceOnline
+        ? cs.onSurfaceVariant.withOpacity(0.5)
+        : (_isOn ? cs.onPrimaryContainer : cs.onSurfaceVariant);
+    final secondaryTextColor = !widget.isDeviceOnline
+        ? cs.onSurfaceVariant.withOpacity(0.4)
+        : (_isOn ? cs.onPrimaryContainer.withOpacity(0.7) : cs.onSurfaceVariant.withOpacity(0.7));
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: _isOn
-          ? cs.primaryContainer
-          : cs.surfaceContainerHighest,
+      color: bgColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
@@ -252,18 +305,14 @@ class _SwitchTileState extends State<SwitchTile>
                         widget.switchModel.label,
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: _isOn
-                              ? cs.onPrimaryContainer
-                              : cs.onSurfaceVariant,
+                          color: textColor,
                         ),
                       ),
                       Text(
-                        label,
+                        widget.isDeviceOnline ? label : '${label} (Offline)',
                         style: TextStyle(
                           fontSize: 12,
-                          color: _isOn
-                              ? cs.onPrimaryContainer.withOpacity(0.7)
-                              : cs.onSurfaceVariant.withOpacity(0.7),
+                          color: secondaryTextColor,
                         ),
                       ),
                     ],
@@ -290,9 +339,9 @@ class _SwitchTileState extends State<SwitchTile>
                 min: 0,
                 max: maxVal,
                 divisions: divisions,
-                activeColor: cs.primary,
+                activeColor: widget.isDeviceOnline ? cs.primary : cs.outlineVariant.withOpacity(0.5),
                 inactiveColor: cs.outlineVariant,
-                onChanged: _inProgress
+                onChanged: (_inProgress || !widget.isDeviceOnline)
                     ? null
                     : (v) => setState(() => _mqttState = SwitchState(
                           isOn: v > 0,

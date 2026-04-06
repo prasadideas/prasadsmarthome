@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'firestore_service.dart';
 
 /// Holds the real-time state of a single switch as seen by the app.
 class SwitchState {
   final bool isOn;
-  final double value;      // 0–100 for dimmer, 0–5 for fan
-  final bool inProgress;   // waiting for device echo
+  final double value; // 0–100 for dimmer OR fan speed
+  final bool inProgress; // waiting for device echo
 
   const SwitchState({
     required this.isOn,
@@ -27,7 +29,7 @@ class SwitchState {
 
 /// Key that uniquely identifies one switch across all devices.
 class SwitchKey {
-  final String deviceId;   // MAC address of the board
+  final String deviceId; // MAC address of the board
   final int switchIndex;
 
   const SwitchKey(this.deviceId, this.switchIndex);
@@ -42,128 +44,174 @@ class SwitchKey {
   int get hashCode => Object.hash(deviceId, switchIndex);
 }
 
-/// Payload published to the CONTROL topic.
-/// Payload received from the STATUS topic.
-///
-/// JSON schema:
+/// MQTT payload schema (both control and status topics):
 /// {
 ///   "switchIndex": 0,
 ///   "isOn": true,
-///   "value": 0.0,      // 0-100 dimmer / 0-5 fan / 0 toggle
-///   "type": "toggle"   // toggle | fan | dimmer | curtain | scene
+///   "value": 75.0,   // 0-100 for fan speed % or dimmer %; 0 for toggle
+///   "type": "toggle" // toggle | fan | dimmer | curtain | scene
 /// }
+///
+/// Topic format (API key in path — no password auth):
+///   Control : smarthome/{apiKey}/{macAddress}/control
+///   Status  : smarthome/{apiKey}/{macAddress}/status
 
 class MqttService extends ChangeNotifier {
-  // ── Configuration (settable from UI) ──────────────────────
+  // ── Configuration (settable from settings UI) ──────────────
   String brokerHost;
   int brokerPort;
-  String apiKey;   // used both as MQTT password and in topic path
+  String apiKey; // embedded in topic path for security
   bool useTls;
+  Duration timeoutDuration;
+  Duration heartbeatInterval;
+  Duration offlineTimeout;
 
-  // ── Internal state ─────────────────────────────────────────
+  final FirestoreService _firestoreService;
+
+  // ── Internal ───────────────────────────────────────────────
   MqttServerClient? _client;
   bool _connected = false;
   bool get isConnected => _connected;
 
+  String? _lastError;
+  String? get lastError => _lastError;
+
   // switchKey → current state
   final Map<SwitchKey, SwitchState> _states = {};
 
-  // switchKey → timer that reverts inProgress on timeout
+  // switchKey → timeout timer
   final Map<SwitchKey, Timer> _timeouts = {};
 
-  // timeout duration (10 seconds by default, configurable)
-  Duration timeoutDuration;
+  // deviceId → last heartbeat timestamp
+  final Map<String, DateTime> _lastHeartbeats = {};
 
-  // Stream controller so widgets can react to status updates
+  // deviceId → offline detection timer
+  final Map<String, Timer> _heartbeatTimeouts = {};
+
+  // Broadcast stream so multiple widgets can listen
   final _stateController =
       StreamController<Map<SwitchKey, SwitchState>>.broadcast();
-  Stream<Map<SwitchKey, SwitchState>> get stateStream => _stateController.stream;
+  Stream<Map<SwitchKey, SwitchState>> get stateStream =>
+      _stateController.stream;
+
+  // Device online/offline status stream
+  final _deviceStatusController = StreamController<Map<String, bool>>.broadcast();
+  Stream<Map<String, bool>> get deviceStatusStream =>
+      _deviceStatusController.stream;
 
   MqttService({
-    this.brokerHost = 'broker.hivemq.com', // More reliable public broker
+    this.brokerHost = 'test.mosquitto.org',
     this.brokerPort = 1883,
-    this.apiKey = 'smarthome_default_key',
+    this.apiKey = 'smarthome_default',
     this.useTls = false,
     this.timeoutDuration = const Duration(seconds: 10),
-  });
+    this.heartbeatInterval = const Duration(seconds: 30),
+    this.offlineTimeout = const Duration(seconds: 60),
+    required FirestoreService firestoreService,
+  }) : _firestoreService = firestoreService;
 
   // ── Topic helpers ──────────────────────────────────────────
 
-  /// Control topic: app → device
-  /// smarthome/{apiKey}/{macAddress}/control
+  /// App → device
   String controlTopic(String macAddress) =>
       'smarthome/$apiKey/$macAddress/control';
 
-  /// Status topic: device → app
-  /// smarthome/{apiKey}/{macAddress}/status
+  /// Device → app
   String statusTopic(String macAddress) =>
       'smarthome/$apiKey/$macAddress/status';
 
-  /// Wildcard to subscribe all status topics for this API key
-  String get allStatusTopicWildcard => 'smarthome/$apiKey/+/status';
+  /// Wildcard subscription for all devices under this API key
+  String get _allStatusWildcard => 'smarthome/$apiKey/+/status';
 
-  // ── Connection ─────────────────────────────────────────────
+  /// Heartbeat topic for device status
+  String heartbeatTopic(String macAddress) =>
+      'smarthome/$apiKey/$macAddress/heartbeat';
+
+  /// Wildcard subscription for all heartbeat topics
+  String get _allHeartbeatWildcard => 'smarthome/$apiKey/+/heartbeat';
+
+  // ── Connect ────────────────────────────────────────────────
 
   Future<bool> connect() async {
-    await disconnect();
+    await disconnect(); // clean slate
+    _lastError = null;
 
-    final clientId = 'smarthome_app_${DateTime.now().millisecondsSinceEpoch}';
+    // Unique client ID prevents "client already connected" rejections
+    final clientId =
+        'smarthome_${DateTime.now().millisecondsSinceEpoch % 100000}';
+
     _client = MqttServerClient.withPort(brokerHost, clientId, brokerPort);
-    _client!.logging(on: true); // Enable detailed logging
-    _client!.keepAlivePeriod = 30;
-    _client!.autoReconnect = true;
-    _client!.connectTimeoutPeriod = 10000; // 10 second timeout
-    _client!.onDisconnected = _onDisconnected;
+    _client!.logging(on: kDebugMode);
+    _client!.keepAlivePeriod = 60;
+    _client!.connectTimeoutPeriod = 10000; // 10 s — avoids silent hangs
+    _client!.autoReconnect = false; // we manage reconnection manually
+
+    // Callbacks
     _client!.onConnected = _onConnected;
-    _client!.onAutoReconnect = () => debugPrint('[MQTT] Auto-reconnecting...');
+    _client!.onDisconnected = _onDisconnected;
+    _client!.onSubscribed = (topic) =>
+        debugPrint('[MQTT] Subscribed: $topic');
+    _client!.onSubscribeFail = (topic) =>
+        debugPrint('[MQTT] Subscribe FAILED: $topic');
 
     if (useTls) {
       _client!.secure = true;
+      // For public brokers that use self-signed certs you may need:
+      // _client!.securityContext = SecurityContext.defaultContext;
     }
 
+    // ── Connection message ─────────────────────────────────
+    // IMPORTANT: Do NOT call .authenticateAs() for public brokers that
+    // don't require auth — it causes CONNACK code 4 (bad credentials).
+    // Do NOT chain .withWillQos() — it breaks the connect message builder
+    // on several broker implementations.
     final connMessage = MqttConnectMessage()
         .withClientIdentifier(clientId)
-        .withWillQos(MqttQos.atLeastOnce)
-        .startClean();
+        .startClean()
+        .withWillQos(MqttQos.atMostOnce);
+
     _client!.connectionMessage = connMessage;
 
     try {
-      debugPrint('[MQTT] Attempting to connect to $brokerHost:$brokerPort...');
       await _client!.connect();
-      debugPrint('[MQTT] Connection attempt completed');
+    } on NoConnectionException catch (e) {
+      _lastError = 'NoConnectionException: $e';
+      debugPrint('[MQTT] $_lastError');
+      _cleanup();
+      return false;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('[MQTT] Connect error: $e');
-      // Provide more specific error messages
-      String errorMessage = 'Connection failed';
-      if (e.toString().contains('NoConnectionException')) {
-        errorMessage = 'Broker not responding. Check host/port or try a different broker.';
-      } else if (e.toString().contains('SocketException')) {
-        errorMessage = 'Network error. Check internet connection.';
-      } else if (e.toString().contains('HandshakeException')) {
-        errorMessage = 'SSL/TLS error. Check TLS settings.';
-      }
-      debugPrint('[MQTT] Error message: $errorMessage');
-      _connected = false;
-      notifyListeners();
+      _cleanup();
       return false;
     }
 
-    if (_client!.connectionStatus?.state == MqttConnectionState.connected) {
-      debugPrint('[MQTT] Successfully connected!');
-      _subscribeToStatusTopics();
-      _client!.updates?.listen(_onMessage);
-      return true;
-    } else {
-      debugPrint('[MQTT] Connection status: ${_client!.connectionStatus?.state}');
-      debugPrint('[MQTT] Connection status details: ${_client!.connectionStatus}');
-      _connected = false;
-      notifyListeners();
+    final state = _client!.connectionStatus?.state;
+    final returnCode = _client!.connectionStatus?.returnCode;
+    debugPrint('[MQTT] Connection state: $state  returnCode: $returnCode');
+
+    if (state != MqttConnectionState.connected) {
+      _lastError =
+          'Connection refused. Return code: $returnCode';
+      _cleanup();
       return false;
     }
+
+    // Listen for incoming messages
+    _client!.updates?.listen(_onMessage);
+
+    // Subscribe to all status topics for this API key
+    _client!.subscribe(_allStatusWildcard, MqttQos.atLeastOnce);
+
+    // Subscribe to all heartbeat topics
+    _client!.subscribe(_allHeartbeatWildcard, MqttQos.atLeastOnce);
+
+    return true;
   }
 
   void _onConnected() {
     _connected = true;
+    _lastError = null;
     debugPrint('[MQTT] Connected to $brokerHost:$brokerPort');
     notifyListeners();
   }
@@ -174,25 +222,23 @@ class MqttService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _subscribeToStatusTopics() {
-    _client!.subscribe(allStatusTopicWildcard, MqttQos.atLeastOnce);
-    debugPrint('[MQTT] Subscribed to $allStatusTopicWildcard');
+  void _cleanup() {
+    _connected = false;
+    _client?.disconnect();
+    _client = null;
+    notifyListeners();
   }
 
   Future<void> disconnect() async {
-    _client?.disconnect();
-    _client = null;
-    _connected = false;
+    _cleanup();
   }
 
   // ── Publish a command ──────────────────────────────────────
 
-  /// Publish a switch command and mark it as inProgress.
-  /// [macAddress] is the device's MAC (used as deviceId in models).
-  /// [switchIndex] is zero-based index.
-  /// [isOn] target on/off state.
-  /// [value] slider value (0-100 dimmer, 0-5 fan, 0 for toggle).
-  /// [type] 'toggle' | 'fan' | 'dimmer' | 'curtain' | 'scene'
+  /// Publishes a switch command and marks it as in-progress.
+  /// [macAddress] — device MAC (used as deviceId in Firestore models).
+  /// [value]      — 0-100 for fan/dimmer; 0 for toggles.
+  /// [type]       — 'toggle' | 'fan' | 'dimmer' | 'curtain' | 'scene'
   void publishCommand({
     required String macAddress,
     required int switchIndex,
@@ -207,22 +253,28 @@ class MqttService extends ChangeNotifier {
 
     final key = SwitchKey(macAddress, switchIndex);
 
-    // Mark as in-progress optimistically
+    // Optimistically mark as in-progress
     _states[key] = SwitchState(isOn: isOn, value: value, inProgress: true);
     _stateController.add(Map.from(_states));
     notifyListeners();
 
-    // Cancel any existing timeout
+    // Cancel any existing timeout for this switch
     _timeouts[key]?.cancel();
 
-    // Start timeout — revert inProgress if no echo arrives
+    // Revert inProgress if device doesn't echo within timeout
     _timeouts[key] = Timer(timeoutDuration, () {
       final current = _states[key];
       if (current != null && current.inProgress) {
-        _states[key] = current.copyWith(inProgress: false);
+        // Revert to previous state (opposite of what we sent)
+        _states[key] = SwitchState(
+          isOn: !isOn, // revert
+          value: value,
+          inProgress: false,
+        );
         _stateController.add(Map.from(_states));
         notifyListeners();
-        debugPrint('[MQTT] Timeout for switch $switchIndex on $macAddress');
+        debugPrint(
+            '[MQTT] Timeout — reverting switch $switchIndex on $macAddress');
       }
     });
 
@@ -233,72 +285,169 @@ class MqttService extends ChangeNotifier {
       'type': type,
     });
 
-    final builder = MqttClientPayloadBuilder();
-    builder.addString(payload);
+    final builder = MqttClientPayloadBuilder()..addString(payload);
     _client!.publishMessage(
       controlTopic(macAddress),
       MqttQos.atLeastOnce,
       builder.payload!,
     );
 
-    debugPrint('[MQTT] Published to ${controlTopic(macAddress)}: $payload');
+    debugPrint('[MQTT] → ${controlTopic(macAddress)} : $payload');
   }
 
-  // ── Receive status messages ────────────────────────────────
+  // ── Receive status updates ─────────────────────────────────
 
   void _onMessage(List<MqttReceivedMessage<MqttMessage>> messages) {
     for (final msg in messages) {
       final topic = msg.topic;
-      final recMessage = msg.payload as MqttPublishMessage;
-      final payloadStr = MqttPublishPayload.bytesToStringAsString(
-        recMessage.payload.message,
+      final pub = msg.payload as MqttPublishMessage;
+      final raw = MqttPublishPayload.bytesToStringAsString(
+        pub.payload.message,
       );
 
-      debugPrint('[MQTT] Status received on $topic: $payloadStr');
+      debugPrint('[MQTT] ← $topic : $raw');
 
-      // Extract MAC address from topic: smarthome/{apiKey}/{mac}/status
+      // Extract MAC from: smarthome/{apiKey}/{mac}/status or smarthome/{apiKey}/{mac}/heartbeat
       final parts = topic.split('/');
       if (parts.length < 4) continue;
       final macAddress = parts[2];
+      final messageType = parts[3]; // 'status' or 'heartbeat'
 
-      try {
-        final data = jsonDecode(payloadStr) as Map<String, dynamic>;
-        final switchIndex = data['switchIndex'] as int? ?? 0;
-        final isOn = data['isOn'] as bool? ?? false;
-        final value = (data['value'] as num?)?.toDouble() ?? 0.0;
-
-        final key = SwitchKey(macAddress, switchIndex);
-
-        // Cancel timeout — device responded
-        _timeouts[key]?.cancel();
-        _timeouts.remove(key);
-
-        // Update state, clear inProgress
-        _states[key] = SwitchState(isOn: isOn, value: value, inProgress: false);
-        _stateController.add(Map.from(_states));
-        notifyListeners();
-      } catch (e) {
-        debugPrint('[MQTT] Failed to parse status payload: $e');
+      if (messageType == 'heartbeat') {
+        _handleHeartbeat(macAddress, raw);
+      } else if (messageType == 'status') {
+        _handleStatus(macAddress, raw);
       }
     }
   }
 
-  // ── State accessors ────────────────────────────────────────
+  // ── Handle heartbeat messages ──────────────────────────────
 
-  SwitchState? getState(String macAddress, int switchIndex) {
-    return _states[SwitchKey(macAddress, switchIndex)];
+  void _handleHeartbeat(String macAddress, String raw) {
+    try {
+      // Heartbeat payload is just a timestamp
+      final timestamp = DateTime.now();
+      _lastHeartbeats[macAddress] = timestamp;
+
+      // Cancel existing offline timer
+      _heartbeatTimeouts[macAddress]?.cancel();
+
+      // Set device as online
+      _updateDeviceStatus(macAddress, true);
+
+      // Start offline detection timer
+      _heartbeatTimeouts[macAddress] = Timer(offlineTimeout, () {
+        _updateDeviceStatus(macAddress, false);
+        debugPrint('[MQTT] Device $macAddress marked offline (no heartbeat)');
+      });
+
+      debugPrint('[MQTT] Heartbeat from $macAddress at $timestamp');
+    } catch (e) {
+      debugPrint('[MQTT] Failed to handle heartbeat: $e  raw=$raw');
+    }
   }
 
-  /// Seed initial states from Firestore snapshot (so UI shows correct state
-  /// before any MQTT message arrives).
+  // ── Handle status messages ──────────────────────────────────
+
+  void _handleStatus(String macAddress, String raw) {
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final switchIndex = (data['switchIndex'] as num?)?.toInt() ?? 0;
+      final isOn = data['isOn'] as bool? ?? false;
+      final value = (data['value'] as num?)?.toDouble() ?? 0.0;
+
+      final key = SwitchKey(macAddress, switchIndex);
+
+      // Device echoed — cancel timeout
+      _timeouts[key]?.cancel();
+      _timeouts.remove(key);
+
+      // Update state, clear inProgress
+      _states[key] =
+          SwitchState(isOn: isOn, value: value, inProgress: false);
+      _stateController.add(Map.from(_states));
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[MQTT] Failed to parse status: $e  raw=$raw');
+    }
+  }
+
+  // ── Send heartbeat (typically called by devices, but useful for testing) ──
+
+  void sendHeartbeat(String macAddress) {
+    if (!_connected || _client == null) return;
+
+    final payload = jsonEncode({
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+
+    final builder = MqttClientPayloadBuilder()..addString(payload);
+    _client!.publishMessage(
+      heartbeatTopic(macAddress),
+      MqttQos.atLeastOnce,
+      builder.payload!,
+    );
+
+    debugPrint('[MQTT] → ${heartbeatTopic(macAddress)} : $payload');
+  }
+
+  // ── Device status accessors ────────────────────────────────
+
+  bool isDeviceOnline(String deviceId) {
+    final lastHeartbeat = _lastHeartbeats[deviceId];
+    if (lastHeartbeat == null) return false;
+    return DateTime.now().difference(lastHeartbeat) < offlineTimeout;
+  }
+
+  DateTime? getLastHeartbeat(String deviceId) => _lastHeartbeats[deviceId];
+
+  SwitchState? getState(String macAddress, int switchIndex) =>
+      _states[SwitchKey(macAddress, switchIndex)];
+
+  /// Seed initial Firestore state into MQTT state map so the UI shows the
+  /// correct values before any MQTT message arrives.
+  /// Call this every time the Firestore snapshot updates.
   void seedStates(String macAddress, List<Map<String, dynamic>> switches) {
+    bool changed = false;
     for (int i = 0; i < switches.length; i++) {
       final key = SwitchKey(macAddress, i);
+      // Only seed if not already in map (don't overwrite live MQTT state)
       if (!_states.containsKey(key)) {
         _states[key] = SwitchState(
           isOn: switches[i]['isOn'] as bool? ?? false,
           value: (switches[i]['value'] as num?)?.toDouble() ?? 0.0,
         );
+        changed = true;
+      }
+    }
+    if (changed) {
+      _stateController.add(Map.from(_states));
+    }
+  }
+
+  // Device status management
+
+  void _updateDeviceStatus(String macAddress, bool isOnline) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        debugPrint('[MQTT] No user logged in - skipping device status update for $macAddress');
+        return;
+      }
+      
+      if (isOnline) {
+        // Look up device by MAC address and update
+        await _firestoreService.updateDeviceHeartbeatByMac(uid, macAddress);
+      } else {
+        // Mark device offline by MAC address
+        await _firestoreService.markDeviceOfflineByMac(uid, macAddress);
+      }
+      debugPrint('[MQTT] Device $macAddress status updated: ${isOnline ? 'online' : 'offline'}');
+    } catch (e) {
+      if (e.toString().contains('permission-denied')) {
+        debugPrint('[MQTT] Permission denied updating device $macAddress - device may not exist yet');
+      } else {
+        debugPrint('[MQTT] Failed to update device status: $e');
       }
     }
   }
@@ -308,7 +457,11 @@ class MqttService extends ChangeNotifier {
     for (final t in _timeouts.values) {
       t.cancel();
     }
+    for (final t in _heartbeatTimeouts.values) {
+      t.cancel();
+    }
     _stateController.close();
+    _deviceStatusController.close();
     disconnect();
     super.dispose();
   }

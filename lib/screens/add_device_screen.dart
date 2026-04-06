@@ -25,6 +25,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   late List<_EditableSwitch> _editableSwitches;
   final _deviceNameController = TextEditingController();
+  final _macIdController = TextEditingController();
   bool _assignToRoom = false;
   bool _saving = false;
 
@@ -65,7 +66,20 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   }
 
   Future<void> _saveDevice() async {
-    if (_deviceNameController.text.trim().isEmpty) return;
+    if (_deviceNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a device name')),
+      );
+      return;
+    }
+    
+    if (_macIdController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('MAC ID is required for MQTT communication')),
+      );
+      return;
+    }
+    
     setState(() => _saving = true);
 
     final switches = _editableSwitches
@@ -95,6 +109,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         switches: switches,
         linkedRoom: roomRef,
         linkedHome: homeRef,
+        macId: _macIdController.text.trim().isNotEmpty ? _macIdController.text.trim() : null,
       ),
     );
 
@@ -104,6 +119,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     }
 
     if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    _deviceNameController.dispose();
+    _macIdController.dispose();
+    super.dispose();
   }
 
   @override
@@ -244,6 +266,17 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
           controller: _deviceNameController,
           decoration: const InputDecoration(
             labelText: 'Device name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // MAC ID
+        TextFormField(
+          controller: _macIdController,
+          decoration: const InputDecoration(
+            labelText: 'MAC ID (e.g., 00:1A:2B:3C:4D:5E)',
+            hintText: 'Enter device MAC address',
             border: OutlineInputBorder(),
           ),
         ),
@@ -494,7 +527,7 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
                       Text(widget.sw.label,
                           style: const TextStyle(
                               fontWeight: FontWeight.w600)),
-                      Text('Fan — Speed: ${_speed.toInt()} / 5',
+                      Text('Fan — Speed: ${_speed.toInt()}%',
                           style: TextStyle(
                               fontSize: 12,
                               color: widget.cs.onSurface
@@ -511,7 +544,7 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
               ],
             ),
             const SizedBox(height: 4),
-            // Speed slider 0-5
+            // Speed slider 0-100%
             Row(
               children: [
                 Icon(Icons.speed,
@@ -521,9 +554,9 @@ class _FanSwitchPreviewState extends State<_FanSwitchPreview> {
                   child: Slider(
                     value: _speed,
                     min: 0,
-                    max: 5,
-                    divisions: 5,
-                    label: 'Speed ${_speed.toInt()}',
+                    max: 100,
+                    divisions: 20,
+                    label: 'Speed ${_speed.toInt()}%',
                     onChanged: (v) =>
                         setState(() {
                           _speed = v;

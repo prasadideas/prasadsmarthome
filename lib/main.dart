@@ -6,15 +6,23 @@ import 'screens/login_screen.dart';
 import 'services/firestore_service.dart';
 import 'services/mqtt_service.dart';
 import 'services/mqtt_provider.dart';
+import 'services/scene_scheduler.dart';
 import 'theme_provider.dart';
 
 // Singleton MQTT service to ensure only one instance exists
 late final MqttService _mqttService;
+late final SceneScheduler sceneScheduler;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  _mqttService = MqttService(); // Initialize MQTT once
+  final firestoreService = FirestoreService();
+  _mqttService = MqttService(firestoreService: firestoreService);
+  sceneScheduler = SceneScheduler(
+    firestoreService: firestoreService,
+    mqttService: _mqttService,
+  );
+  await sceneScheduler.initialize();
   runApp(MyApp());
 }
 

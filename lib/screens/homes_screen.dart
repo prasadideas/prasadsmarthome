@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_model.dart';
-import '../models/device_model.dart';
 import '../services/firestore_service.dart';
 import 'rooms_screen.dart';
 import 'devices_screen.dart';
@@ -370,7 +369,7 @@ class _HomesScreenState extends State<HomesScreen> {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: homes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final home = homes[index];
               final isFavourite = home.homeId == _favouriteHomeId;

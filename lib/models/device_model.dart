@@ -48,6 +48,8 @@ class DeviceModel {
   final String? linkedRoom;  // renamed from roomRef
   final String? linkedHome;  // new field
   final String ownedBy;      // new field
+  final DateTime? lastHeartbeat; // new field for heartbeat tracking
+  final String? macId;       // MAC address of the device
   final List<SwitchModel> switches;
 
   DeviceModel({
@@ -59,6 +61,8 @@ class DeviceModel {
     required this.ownedBy,
     this.linkedRoom,
     this.linkedHome,
+    this.lastHeartbeat,
+    this.macId,
   });
 
   factory DeviceModel.fromMap(String id, Map<String, dynamic> map) {
@@ -84,6 +88,10 @@ class DeviceModel {
       linkedRoom: map['linkedRoom'],   // renamed
       linkedHome: map['linkedHome'],   // new
       switches: parsedSwitches,
+      lastHeartbeat: map['lastHeartbeat'] != null
+          ? (map['lastHeartbeat'] as Timestamp).toDate()
+          : null,
+      macId: map['macId'],
     );
   }
 
@@ -96,8 +104,12 @@ class DeviceModel {
       'ownedBy': uid,          // top level owner field
       'linkedRoom': linkedRoom,
       'linkedHome': linkedHome,
+      'macId': macId,
       'switches': switches.map((s) => s.toMap()).toList(),
       'lastSeen': FieldValue.serverTimestamp(),
+      'lastHeartbeat': lastHeartbeat != null
+          ? Timestamp.fromDate(lastHeartbeat!)
+          : FieldValue.serverTimestamp(),
     };
   }
 }

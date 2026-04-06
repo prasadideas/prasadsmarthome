@@ -263,7 +263,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: devices.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final device = devices[index];
               return _DeviceCard(device: device, cs: cs,
@@ -405,11 +405,19 @@ class _DeviceCard extends StatelessWidget {
             itemCount: toggleSwitches.length,
             itemBuilder: (context, i) {
               final switchIndex = toggleSwitches[i];
+              final macId = device.macId;
+              if (macId == null || macId.isEmpty) {
+                return const ListTile(
+                  title: Text('Device missing MAC ID'),
+                  leading: Icon(Icons.error_outline, color: Colors.red),
+                );
+              }
               return SwitchTile(
-                deviceMac: device.deviceId,
+                deviceMac: macId,
                 switchIndex: switchIndex,
                 switchModel: device.switches[switchIndex],
                 compact: true,
+                isDeviceOnline: device.isOnline,
               );
             },
           ),
@@ -417,12 +425,22 @@ class _DeviceCard extends StatelessWidget {
         // Slider switches (fan/dimmer) full width below
         if (sliderSwitches.isNotEmpty) ...[
           if (toggleSwitches.isNotEmpty) const SizedBox(height: 8),
-          ...sliderSwitches.map((switchIndex) => SwitchTile(
-                deviceMac: device.deviceId,
-                switchIndex: switchIndex,
-                switchModel: device.switches[switchIndex],
-                compact: false,
-              )),
+          ...(() {
+            final macId = device.macId;
+            if (macId == null || macId.isEmpty) {
+              return [const ListTile(
+                title: Text('Device missing MAC ID'),
+                leading: Icon(Icons.error_outline, color: Colors.red),
+              )];
+            }
+            return sliderSwitches.map((switchIndex) => SwitchTile(
+                  deviceMac: macId,
+                  switchIndex: switchIndex,
+                  switchModel: device.switches[switchIndex],
+                  compact: false,
+                  isDeviceOnline: device.isOnline,
+                )).toList();
+          })(),
         ],
       ],
     );

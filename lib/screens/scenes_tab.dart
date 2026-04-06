@@ -4,6 +4,7 @@ import '../models/scene_model.dart';
 import '../models/device_model.dart';
 import '../models/home_model.dart';
 import '../services/firestore_service.dart';
+import '../main.dart' as main_app;
 
 class ScenesTab extends StatefulWidget {
   const ScenesTab({super.key});
@@ -111,7 +112,7 @@ class _ScenesTabState extends State<ScenesTab> {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: scenes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final scene = scenes[index];
               return Card(
@@ -173,8 +174,8 @@ class _ScenesTabState extends State<ScenesTab> {
                             color: Colors.green),
                         tooltip: 'Run now',
                         onPressed: () async {
-                          await _firestoreService.triggerScene(
-                              uid, scene);
+                          await main_app.sceneScheduler.executeScene(
+                              scene.sceneId, uid);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -318,9 +319,12 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
                         .map((entry) {
                       final i = entry.key;
                       final sw = entry.value;
-                      final existing = _actions.where((a) =>
-                          a.deviceId == device.deviceId &&
-                          a.switchIndex == i).firstOrNull;
+                      final macId = device.macId;
+                      final existing = macId != null && macId.isNotEmpty
+                          ? _actions.where((a) =>
+                          a.macId == macId &&
+                          a.switchIndex == i).firstOrNull
+                          : null;
 
                       return StatefulBuilder(
                         builder: (context, setRow) => ListTile(
@@ -353,12 +357,15 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
                                           Icons.remove_circle_outline,
                                           color: Colors.red),
                                       onPressed: () {
-                                        setState(() => _actions
-                                            .removeWhere((a) =>
-                                                a.deviceId ==
-                                                    device.deviceId &&
-                                                a.switchIndex == i));
-                                        setRow(() {});
+                                        final macId = device.macId;
+                                        if (macId != null && macId.isNotEmpty) {
+                                          setState(() => _actions
+                                              .removeWhere((a) =>
+                                                  a.macId ==
+                                                      macId &&
+                                                  a.switchIndex == i));
+                                          setRow(() {});
+                                        }
                                       },
                                     ),
                                   ],
@@ -368,16 +375,19 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
                                   children: [
                                     TextButton(
                                       onPressed: () {
-                                        setState(() =>
-                                            _actions.add(SceneAction(
-                                              deviceId: device.deviceId,
-                                              deviceName:
-                                                  device.deviceName,
-                                              switchIndex: i,
-                                              switchLabel: sw.label,
-                                              targetState: true,
-                                            )));
-                                        setRow(() {});
+                                        final macId = device.macId;
+                                        if (macId != null && macId.isNotEmpty) {
+                                          setState(() =>
+                                              _actions.add(SceneAction(
+                                                macId: macId,
+                                                deviceName:
+                                                    device.deviceName,
+                                                switchIndex: i,
+                                                switchLabel: sw.label,
+                                                targetState: true,
+                                              )));
+                                          setRow(() {});
+                                        }
                                       },
                                       child: const Text('ON',
                                           style: TextStyle(
@@ -385,16 +395,19 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
                                     ),
                                     TextButton(
                                       onPressed: () {
-                                        setState(() =>
-                                            _actions.add(SceneAction(
-                                              deviceId: device.deviceId,
-                                              deviceName:
-                                                  device.deviceName,
-                                              switchIndex: i,
-                                              switchLabel: sw.label,
-                                              targetState: false,
-                                            )));
-                                        setRow(() {});
+                                        final macId = device.macId;
+                                        if (macId != null && macId.isNotEmpty) {
+                                          setState(() =>
+                                              _actions.add(SceneAction(
+                                                macId: macId,
+                                                deviceName:
+                                                    device.deviceName,
+                                                switchIndex: i,
+                                                switchLabel: sw.label,
+                                                targetState: false,
+                                              )));
+                                          setRow(() {});
+                                        }
                                       },
                                       child: const Text('OFF',
                                           style: TextStyle(
@@ -445,7 +458,7 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
         ? '${_scheduledTime.hour.toString().padLeft(2, '0')}:${_scheduledTime.minute.toString().padLeft(2, '0')}'
         : null;
 
-    await widget.firestoreService.addScene(
+    final sceneRef = await widget.firestoreService.addScene(
       widget.uid,
       SceneModel(
         sceneId: '',
@@ -459,6 +472,22 @@ class _AddSceneScreenState extends State<_AddSceneScreen> {
         isActive: true,
       ),
     );
+
+    // Schedule the scene if it's scheduled
+    if (_isScheduled) {
+      final scene = SceneModel(
+        sceneId: sceneRef,
+        name: _nameController.text.trim(),
+        icon: _selectedIcon,
+        homeId: _selectedHome?.homeId ?? '',
+        actions: _actions,
+        isScheduled: _isScheduled,
+        scheduledTime: timeStr,
+        scheduledDays: _selectedDays,
+        isActive: true,
+      );
+      await main_app.sceneScheduler.scheduleScene(scene);
+    }
 
     if (mounted) Navigator.pop(context);
   }

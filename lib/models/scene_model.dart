@@ -1,14 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SceneAction {
-  final String deviceId;
+  final String macId;        // MAC address for MQTT communication
   final String deviceName;
   final int switchIndex;
   final String switchLabel;
   final bool targetState;
 
   SceneAction({
-    required this.deviceId,
+    required this.macId,
     required this.deviceName,
     required this.switchIndex,
     required this.switchLabel,
@@ -17,7 +17,7 @@ class SceneAction {
 
   factory SceneAction.fromMap(Map<String, dynamic> map) {
     return SceneAction(
-      deviceId: map['deviceId'] ?? '',
+      macId: map['macId'] ?? map['deviceId'] ?? '', // fallback for old data
       deviceName: map['deviceName'] ?? '',
       switchIndex: map['switchIndex'] ?? 0,
       switchLabel: map['switchLabel'] ?? '',
@@ -27,7 +27,7 @@ class SceneAction {
 
   Map<String, dynamic> toMap() {
     return {
-      'deviceId': deviceId,
+      'macId': macId,
       'deviceName': deviceName,
       'switchIndex': switchIndex,
       'switchLabel': switchLabel,

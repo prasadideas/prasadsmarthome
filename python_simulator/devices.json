@@ -1,0 +1,59 @@
+{
+  "_config": {
+    "heartbeat_interval": 5
+  },
+  "AA:BB:CC:DD:EE:01": {
+    "name": "Living Room Switch",
+    "type": "1-switch",
+    "online": true,
+    "switches": [
+      {
+        "isOn": false,
+        "value": 0.0,
+        "type": "toggle"
+      }
+    ],
+    "sensors": []
+  },
+  "AA:BB:CC:DD:EE:02": {
+    "name": "2-switch",
+    "type": "2-switch",
+    "online": true,
+    "switches": [
+      {
+        "isOn": false,
+        "value": 0.0,
+        "type": "toggle"
+      },
+      {
+        "isOn": false,
+        "value": 0.0,
+        "type": "toggle"
+      }
+    ],
+    "sensors": []
+  },
+  "AA:BB:CC:DD:EE:03": {
+    "name": "2 sw + fan",
+    "type": "sw_2_fan",
+    "online": true,
+    "switches": [
+      {
+        "isOn": true,
+        "value": 0.0,
+        "type": "toggle"
+      },
+      {
+        "isOn": true,
+        "value": 0.0,
+        "type": "toggle"
+      },
+      {
+        "isOn": true,
+        "value": 1.0,
+        "type": "fan"
+      }
+    ],
+    "sensors": []
+  }
+}

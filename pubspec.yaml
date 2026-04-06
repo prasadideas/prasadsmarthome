@@ -20,6 +20,10 @@ dependencies:
   # MQTT
   mqtt_client: ^10.6.1
 
+  # Background scheduling
+  flutter_local_notifications: ^18.0.1
+  workmanager: ^0.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

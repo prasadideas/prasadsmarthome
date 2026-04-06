@@ -18,7 +18,8 @@ class FirestoreService {
   CollectionReference _rooms(String uid, String homeId) =>
       _homes(uid).doc(homeId).collection('rooms');
 
-  CollectionReference get _devicesRef => _db.collection('devices');
+  CollectionReference _devices(String uid) =>
+      _db.collection('users').doc(uid).collection('devices');
 
   // ── User ───────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ class FirestoreService {
   // Get user document once (to read favouriteHomeId)
   Future<Map<String, dynamic>?> getUser(String uid) async {
     final doc = await _db.collection('users').doc(uid).get();
-    return doc.data() as Map<String, dynamic>?;
+    return doc.data();
   }
 
   Future<void> setUserThemeMode(String uid, String themeMode) async {
@@ -113,52 +114,233 @@ class FirestoreService {
   // ── Devices ────────────────────────────────────────────────
 
   Future<String> addDevice(String uid, DeviceModel device) async {
-    final ref = await _devicesRef.add(device.toMap(uid)); // pass uid into toMap
+    final ref = await _devices(uid).add(device.toMap(uid));
     return ref.id;
   }
 
-  // Stream all devices owned by this user
+  // Find device by MAC address in BOTH locations, returns (documentId, data) or (null, null)
+  Future<({String? docId, Map<String, dynamic>? data, bool isNewLocation})?>
+      _findDeviceByMac(String uid, String macAddress) async {
+    // First, try new location
+    final newSnapshot = await _devices(uid)
+        .where('macId', isEqualTo: macAddress)
+        .limit(1)
+        .get();
+
+    if (newSnapshot.docs.isNotEmpty) {
+      final doc = newSnapshot.docs.first;
+      return (
+        docId: doc.id,
+        data: doc.data() as Map<String, dynamic>,
+        isNewLocation: true
+      );
+    }
+
+    // Try old location
+    final oldSnapshot = await _db
+        .collection('devices')
+        .where('macId', isEqualTo: macAddress)
+        .where('ownedBy', isEqualTo: uid)
+        .limit(1)
+        .get();
+
+    if (oldSnapshot.docs.isNotEmpty) {
+      final doc = oldSnapshot.docs.first;
+      return (
+        docId: doc.id,
+        data: doc.data() as Map<String, dynamic>,
+        isNewLocation: false
+      );
+    }
+
+    return null;
+  }
+
+  // Update device heartbeat using MAC address
+  Future<void> updateDeviceHeartbeatByMac(String uid, String macAddress) async {
+    try {
+      final result = await _findDeviceByMac(uid, macAddress);
+      if (result == null) {
+        // Device not found - might be newly added and not yet synced
+        return;
+      }
+
+      final (docId: docId, data: _, isNewLocation: isNewLocation) = result;
+
+      if (isNewLocation) {
+        await _devices(uid).doc(docId).update({
+          'lastHeartbeat': FieldValue.serverTimestamp(),
+          'isOnline': true,
+        });
+      } else {
+        await _db.collection('devices').doc(docId).update({
+          'lastHeartbeat': FieldValue.serverTimestamp(),
+          'isOnline': true,
+        });
+      }
+    } catch (e) {
+      // Silently handle errors - device might be deleted
+      debugPrint('[FirestoreService] Error updating heartbeat for $macAddress: $e');
+    }
+  }
+
+  // Mark device offline using MAC address
+  Future<void> markDeviceOfflineByMac(String uid, String macAddress) async {
+    try {
+      final result = await _findDeviceByMac(uid, macAddress);
+      if (result == null) {
+        return;
+      }
+
+      final (docId: docId, data: _, isNewLocation: isNewLocation) = result;
+
+      if (isNewLocation) {
+        await _devices(uid).doc(docId).update({
+          'isOnline': false,
+        });
+      } else {
+        await _db.collection('devices').doc(docId).update({
+          'isOnline': false,
+        });
+      }
+    } catch (e) {
+      debugPrint('[FirestoreService] Error marking offline for $macAddress: $e');
+    }
+  }
+
+  // Update device heartbeat (try new location first, fallback to old)
+  Future<void> updateDeviceHeartbeat(String uid, String deviceId) async {
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      await _devices(uid).doc(deviceId).update({
+        'lastHeartbeat': FieldValue.serverTimestamp(),
+        'isOnline': true,
+      });
+    } else {
+      // Try old location
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        await _db.collection('devices').doc(deviceId).update({
+          'lastHeartbeat': FieldValue.serverTimestamp(),
+          'isOnline': true,
+        });
+      }
+    }
+  }
+
+  // Mark device as offline (try new location first, fallback to old)
+  Future<void> markDeviceOffline(String uid, String deviceId) async {
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      await _devices(uid).doc(deviceId).update({
+        'isOnline': false,
+      });
+    } else {
+      // Try old location
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        await _db.collection('devices').doc(deviceId).update({
+          'isOnline': false,
+        });
+      }
+    }
+  }
+
+  // Stream all devices owned by this user (from new location + legacy location)
   Stream<List<DeviceModel>> streamDevices(String uid) {
-    return _devicesRef
-        .where('ownedBy', isEqualTo: uid) // filter by owner
+    return _devices(uid)
         .snapshots()
-        .map(
-          (snap) => snap.docs
-              .map(
-                (doc) => DeviceModel.fromMap(
-                  doc.id,
-                  doc.data() as Map<String, dynamic>,
-                ),
-              )
-              .toList(),
-        );
+        .asyncMap((newSnapshot) async {
+          // Get devices from new location
+          List<DeviceModel> newDevices = newSnapshot.docs
+              .map((doc) => DeviceModel.fromMap(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  ))
+              .toList();
+
+          // Also get devices from old global location that belong to this user
+          final oldSnapshot = await _db
+              .collection('devices')
+              .where('ownedBy', isEqualTo: uid)
+              .get();
+
+          List<DeviceModel> oldDevices = oldSnapshot.docs
+              .map((doc) => DeviceModel.fromMap(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  ))
+              .toList();
+
+          // Combine and deduplicate
+          final Map<String, DeviceModel> combined = {};
+          for (var d in newDevices) {
+            combined[d.deviceId] = d;
+          }
+          for (var d in oldDevices) {
+            combined[d.deviceId] = d;  // Override if deviceId already exists
+          }
+          return combined.values.toList();
+        });
   }
 
-  // Stream only devices assigned to a specific room
+  // Stream only devices assigned to a specific room (from both old and new locations)
   Stream<List<DeviceModel>> streamDevicesInRoom(String uid, String roomId) {
-    return _devicesRef
-        .where('roomRef', isEqualTo: roomId)
+    return _devices(uid)
+        .where('linkedRoom', isEqualTo: roomId)
         .snapshots()
-        .map(
-          (snap) => snap.docs
-              .map(
-                (doc) => DeviceModel.fromMap(
-                  doc.id,
-                  doc.data() as Map<String, dynamic>,
-                ),
-              )
-              .toList(),
-        );
+        .asyncMap((newSnapshot) async {
+          // Get devices from new location
+          List<DeviceModel> newDevices = newSnapshot.docs
+              .map((doc) => DeviceModel.fromMap(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  ))
+              .toList();
+
+          // Also get devices from old global location with roomRef matching
+          final oldSnapshot = await _db
+              .collection('devices')
+              .where('ownedBy', isEqualTo: uid)
+              .where('linkedRoom', isEqualTo: roomId)
+              .get();
+
+          List<DeviceModel> oldDevices = oldSnapshot.docs
+              .map((doc) => DeviceModel.fromMap(
+                    doc.id,
+                    doc.data() as Map<String, dynamic>,
+                  ))
+              .toList();
+
+          // Combine and deduplicate
+          final Map<String, DeviceModel> combined = {};
+          for (var d in newDevices) {
+            combined[d.deviceId] = d;
+          }
+          for (var d in oldDevices) {
+            combined[d.deviceId] = d;  // Override if deviceId already exists
+          }
+          return combined.values.toList();
+        });
   }
 
-  // Toggle switch
+  // Toggle switch (try new location first, fallback to old)
   Future<void> toggleSwitch(
     String uid,
     String deviceId,
     int switchIndex,
     bool newValue,
   ) async {
-    final doc = await _devicesRef.doc(deviceId).get();
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    // If not found in new location, try old location
+    if (!doc.exists) {
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (!doc.exists) return;
+    }
+
     final data = doc.data() as Map<String, dynamic>;
 
     final rawSwitches = data['switches'];
@@ -176,7 +358,12 @@ class FirestoreService {
       switches[switchIndex]['isOn'] = newValue;
     }
 
-    await _devicesRef.doc(deviceId).update({'switches': switches});
+    // Update in the location where it was found
+    if (doc.reference.path.startsWith('users/$uid')) {
+      await _devices(uid).doc(deviceId).update({'switches': switches});
+    } else {
+      await _db.collection('devices').doc(deviceId).update({'switches': switches});
+    }
   }
 
   // Set all switches in a room to off (or given value)
@@ -185,8 +372,7 @@ class FirestoreService {
     String roomId, {
     bool isOn = false,
   }) async {
-    final querySnap = await _devicesRef
-        .where('ownedBy', isEqualTo: uid)
+    final querySnap = await _devices(uid)
         .where('linkedRoom', isEqualTo: roomId)
         .get();
 
@@ -220,27 +406,59 @@ class FirestoreService {
     }
   }
 
-  // Assign to room
+  // Assign to room (try new location first, fallback to old)
   Future<void> assignDeviceToRoom(
     String uid,
     String deviceId,
     String? roomId,
     String? homeId,
   ) async {
-    await _devicesRef.doc(deviceId).update({
-      'linkedRoom': roomId,
-      'linkedHome': homeId,
-    });
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      // Update in new location
+      await _devices(uid).doc(deviceId).update({
+        'linkedRoom': roomId,
+        'linkedHome': homeId,
+      });
+    } else {
+      // Try old location
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        await _db.collection('devices').doc(deviceId).update({
+          'linkedRoom': roomId,
+          'linkedHome': homeId,
+        });
+      }
+    }
   }
 
-  // Rename device
+  // Rename device (try new location first, fallback to old)
   Future<void> updateDevice(String uid, String deviceId, String newName) async {
-    await _devicesRef.doc(deviceId).update({'deviceName': newName});
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      await _devices(uid).doc(deviceId).update({'deviceName': newName});
+    } else {
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        await _db.collection('devices').doc(deviceId).update({'deviceName': newName});
+      }
+    }
   }
 
-  // Delete device
+  // Delete device (try new location first, fallback to old)
   Future<void> deleteDevice(String uid, String deviceId) async {
-    await _devicesRef.doc(deviceId).delete();
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      await _devices(uid).doc(deviceId).delete();
+    } else {
+      doc = await _db.collection('devices').doc(deviceId).get();
+      if (doc.exists) {
+        await _db.collection('devices').doc(deviceId).delete();
+      }
+    }
   }
 
   // Add device ref into room
@@ -268,15 +486,24 @@ class FirestoreService {
   }
 
   // Admin only — reassign device to another user
-  Future<void> reassignDevice(String deviceId, String newUserId) async {
-    final doc = await _devicesRef.doc(deviceId).get();
-    final oldOwner = (doc.data() as Map<String, dynamic>)['ownedBy'];
-    await _devicesRef.doc(deviceId).update({
+  Future<void> reassignDevice(String oldUid, String deviceId, String newUserId) async {
+    final doc = await _devices(oldUid).doc(deviceId).get();
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return;
+    
+    final oldOwner = data['ownedBy'];
+    
+    // Copy device to new user's collection
+    await _devices(newUserId).doc(deviceId).set({
+      ...data,
       'ownedBy': newUserId,
       'linkedRoom': null,
       'linkedHome': null,
       'lastOwnedBy': oldOwner,
     });
+    
+    // Delete from old user's collection
+    await _devices(oldUid).doc(deviceId).delete();
   }
 
   // Stream all active device templates — ordered by display order
@@ -291,7 +518,7 @@ class FirestoreService {
               .map(
                 (doc) => DeviceTemplate.fromMap(
                   doc.id,
-                  doc.data() as Map<String, dynamic>,
+                  doc.data(),
                 ),
               )
               .toList(),
@@ -722,8 +949,9 @@ class FirestoreService {
   CollectionReference _scenes(String uid) =>
       _db.collection('users').doc(uid).collection('scenes');
 
-  Future<void> addScene(String uid, SceneModel scene) async {
-    await _scenes(uid).add(scene.toMap());
+  Future<String> addScene(String uid, SceneModel scene) async {
+    final ref = await _scenes(uid).add(scene.toMap());
+    return ref.id;
   }
 
   Stream<List<SceneModel>> streamScenes(String uid) {
@@ -747,31 +975,5 @@ class FirestoreService {
     bool isActive,
   ) async {
     await _scenes(uid).doc(sceneId).update({'isActive': isActive});
-  }
-
-  // Execute a scene — apply all switch states
-  Future<void> triggerScene(String uid, SceneModel scene) async {
-    for (final action in scene.actions) {
-      final doc = await _devicesRef.doc(action.deviceId).get();
-      final data = doc.data() as Map<String, dynamic>;
-
-      final rawSwitches = data['switches'];
-      List<Map<String, dynamic>> switches = [];
-      if (rawSwitches is List) {
-        switches = rawSwitches
-            .map((s) => Map<String, dynamic>.from(s))
-            .toList();
-      } else if (rawSwitches is Map) {
-        switches = rawSwitches.values
-            .map((s) => Map<String, dynamic>.from(s))
-            .toList();
-      }
-
-      if (action.switchIndex < switches.length) {
-        switches[action.switchIndex]['isOn'] = action.targetState;
-      }
-
-      await _devicesRef.doc(action.deviceId).update({'switches': switches});
-    }
   }
 }
