@@ -21,12 +21,12 @@
     "online": true,
     "switches": [
       {
-        "isOn": false,
+        "isOn": true,
         "value": 0.0,
         "type": "toggle"
       },
       {
-        "isOn": false,
+        "isOn": true,
         "value": 0.0,
         "type": "toggle"
       }
@@ -50,7 +50,7 @@
       },
       {
         "isOn": true,
-        "value": 1.0,
+        "value": 4.0,
         "type": "fan"
       }
     ],

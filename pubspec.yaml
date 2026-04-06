@@ -20,6 +20,9 @@ dependencies:
   # MQTT
   mqtt_client: ^10.6.1
 
+  # Persistence
+  shared_preferences: ^2.2.0
+
   # Background scheduling
   flutter_local_notifications: ^18.0.1
   workmanager: ^0.7.0

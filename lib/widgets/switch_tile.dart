@@ -50,10 +50,10 @@ class _SwitchTileState extends State<SwitchTile>
     super.didChangeDependencies();
     final mqtt = MqttProvider.of(context);
 
-    // Seed initial state from Firestore data so UI is correct before any MQTT
+    // Seed initial state from Firestore so the UI shows last known state before MQTT updates
     mqtt.seedStates(widget.deviceMac, [widget.switchModel.toMap()]);
 
-    // Subscribe to state stream
+    // Subscribe to MQTT state stream for real-time updates
     _sub?.cancel();
     _sub = mqtt.stateStream.listen((states) {
       final key = SwitchKey(widget.deviceMac, widget.switchIndex);
@@ -309,7 +309,7 @@ class _SwitchTileState extends State<SwitchTile>
                         ),
                       ),
                       Text(
-                        widget.isDeviceOnline ? label : '${label} (Offline)',
+                        widget.isDeviceOnline ? label : '$label (Offline)',
                         style: TextStyle(
                           fontSize: 12,
                           color: secondaryTextColor,

@@ -4,6 +4,8 @@ import '../models/home_model.dart';
 import '../models/room_model.dart';
 import '../models/device_model.dart';
 import '../services/firestore_service.dart';
+import '../services/mqtt_provider.dart';
+import '../services/mqtt_service.dart';
 import 'rooms_screen.dart';
 import 'devices_screen.dart';
 import 'add_device_screen.dart';
@@ -26,6 +28,32 @@ class _HomeTabState extends State<HomeTab> {
   void initState() {
     super.initState();
     _loadActiveHome();
+    // Auto-connect MQTT broker after a short delay to allow context to be ready
+    Future.delayed(const Duration(milliseconds: 500), _autoConnectMqtt);
+  }
+
+  Future<void> _autoConnectMqtt() async {
+    if (!mounted) return;
+    
+    final mqtt = MqttProvider.read(context);
+    
+    // Only auto-connect if not already connected
+    if (!mqtt.isConnected) {
+      debugPrint('[HomeTab] Auto-connecting to MQTT broker...');
+      
+      // Load saved settings before connecting
+      final settings = await MqttService.loadAllSettings();
+      mqtt.brokerHost = settings['host'] as String;
+      mqtt.brokerPort = settings['port'] as int;
+      mqtt.apiKey = settings['apiKey'] as String;
+      mqtt.useTls = settings['useTls'] as bool;
+      mqtt.heartbeatInterval = Duration(seconds: settings['interval'] as int);
+      mqtt.offlineTimeout = Duration(seconds: settings['timeout'] as int);
+      
+      debugPrint('[HomeTab] Using settings: ${settings['host']}:${settings['port']}');
+      await mqtt.connect();
+      debugPrint('[HomeTab] MQTT connection result: ${mqtt.isConnected}');
+    }
   }
 
   Future<void> _loadActiveHome() async {

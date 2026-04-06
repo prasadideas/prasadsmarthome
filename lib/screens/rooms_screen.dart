@@ -4,6 +4,8 @@ import '../models/device_model.dart';
 import '../models/home_model.dart';
 import '../models/room_model.dart';
 import '../services/firestore_service.dart';
+import '../services/mqtt_provider.dart';
+import '../services/mqtt_service.dart';
 import '../screens/devices_screen.dart';
 import 'add_device_screen.dart';
 import 'homes_screen.dart';
@@ -624,57 +626,70 @@ class _RoomsScreenState extends State<RoomsScreen> {
                               );
                             }
 
-                            // Flatten all switches across all devices in room
-                            final allSwitches = roomDevices
-                                .expand((d) => d.switches)
-                                .toList();
+                            // Listen to MQTT state changes so dots update in real-time
+                            final mqtt = MqttProvider.of(context);
+                            return StreamBuilder<Map<SwitchKey, SwitchState>>(
+                              stream: mqtt.stateStream,
+                              builder: (context, mqttSnap) {
+                                // Render switches grouped by device
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Wrap(
+                                      spacing: 4,
+                                      runSpacing: 4,
+                                      children: roomDevices.expand((device) {
+                                        final deviceMac = device.macId ?? '';
+                                        return device.switches.asMap().entries.map((entry) {
+                                          final switchIndex = entry.key; // Index within device
+                                          final sw = entry.value;
+                                          
+                                          // Get MQTT state using correct device MAC and switch index
+                                          final mqttState = mqtt.getState(deviceMac, switchIndex);
+                                          final isOn = mqttState?.isOn ?? false;
 
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Wrap(
-                                  spacing: 4,
-                                  runSpacing: 4,
-                                  children: allSwitches.map((sw) {
-                                    return Tooltip(
-                                      message: sw.label,
-                                      child: Container(
-                                        width: 10,
-                                        height: 10,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: sw.isOn
-                                              ? Theme.of(context).primaryColor
-                                              : Colors.grey.shade300,
-                                          border: Border.all(
-                                            color: sw.isOn
-                                                ? Theme.of(context).primaryColor
-                                                : Colors.grey.shade400,
-                                            width: 0.5,
-                                          ),
+                                          return Tooltip(
+                                            message: sw.label,
+                                            child: Container(
+                                              width: 10,
+                                              height: 10,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: isOn
+                                                    ? Theme.of(context).primaryColor
+                                                    : Colors.grey.shade300,
+                                                border: Border.all(
+                                                  color: isOn
+                                                      ? Theme.of(context).primaryColor
+                                                      : Colors.grey.shade400,
+                                                  width: 0.5,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        });
+                                      }).toList(),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      icon: const Icon(
+                                        Icons.power_settings_new,
+                                        size: 16,
+                                      ),
+                                      label: const Text('Turn off all switches'),
+                                      style: OutlinedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(32),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                          horizontal: 12,
                                         ),
                                       ),
-                                    );
-                                  }).toList(),
-                                ),
-                                const SizedBox(height: 8),
-                                OutlinedButton.icon(
-                                  icon: const Icon(
-                                    Icons.power_settings_new,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Turn off all switches'),
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(32),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                      horizontal: 12,
+                                      onPressed: () =>
+                                          _confirmTurnOffAll(room.roomId),
                                     ),
-                                  ),
-                                  onPressed: () =>
-                                      _confirmTurnOffAll(room.roomId),
-                                ),
-                              ],
+                                  ],
+                                );
+                              },
                             );
                           },
                         ),

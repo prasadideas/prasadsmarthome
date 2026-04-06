@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/home_tab.dart';
 import 'screens/scenes_tab.dart';
 import 'screens/me_tab.dart';
+import 'services/mqtt_provider.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -21,7 +22,47 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final mqtt = MqttProvider.of(context);
+
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Prasad Smart Home'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Center(
+              child: Tooltip(
+                message: mqtt.isConnected
+                    ? 'MQTT Broker: Connected'
+                    : 'MQTT Broker: Disconnected',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.cloud,
+                      size: 18,
+                      color: mqtt.isConnected
+                          ? Colors.green
+                          : Colors.red,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      mqtt.isConnected ? 'Connected' : 'Offline',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: mqtt.isConnected
+                            ? Colors.green
+                            : Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,

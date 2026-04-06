@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/mqtt_provider.dart';
+import '../services/mqtt_service.dart';
 
 class MqttSettingsScreen extends StatefulWidget {
   const MqttSettingsScreen({super.key});
@@ -29,16 +30,26 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize controllers with default values first
+    _hostController = TextEditingController();
+    _portController = TextEditingController();
+    _apiKeyController = TextEditingController();
+    _heartbeatIntervalController = TextEditingController();
+    _offlineTimeoutController = TextEditingController();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
     final mqtt = MqttProvider.read(context);
-    _hostController = TextEditingController(text: mqtt.brokerHost);
-    _portController = TextEditingController(text: mqtt.brokerPort.toString());
-    _apiKeyController = TextEditingController(text: mqtt.apiKey);
-    _heartbeatIntervalController = TextEditingController(
-      text: mqtt.heartbeatInterval.inSeconds.toString(),
-    );
-    _offlineTimeoutController = TextEditingController(
-      text: mqtt.offlineTimeout.inSeconds.toString(),
-    );
+    final prefs = await MqttService.loadHeartbeatSettings();
+    
+    if (!mounted) return;
+    
+    _hostController.text = mqtt.brokerHost;
+    _portController.text = mqtt.brokerPort.toString();
+    _apiKeyController.text = mqtt.apiKey;
+    _heartbeatIntervalController.text = prefs['interval'].toString();
+    _offlineTimeoutController.text = prefs['timeout'].toString();
     _useTls = mqtt.useTls;
   }
 
@@ -81,6 +92,12 @@ class _MqttSettingsScreenState extends State<MqttSettingsScreen> {
     });
 
     final ok = await mqtt.connect();
+
+    // Save ALL settings to persistent storage if connection successful
+    if (ok) {
+      await mqtt.saveHeartbeatSettings();
+      await mqtt.saveBrokerSettings();
+    }
 
     if (mounted) {
       setState(() {

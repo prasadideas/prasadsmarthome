@@ -4,6 +4,7 @@ import '../models/home_model.dart';
 import '../models/room_model.dart';
 import '../models/device_model.dart';
 import '../services/firestore_service.dart';
+import '../services/mqtt_provider.dart';
 import '../widgets/switch_tile.dart';
 import 'add_device_screen.dart';
 
@@ -36,6 +37,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
               onTap: () {
                 Navigator.pop(context);
                 _showRenameDialog(device);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.toggle_on, color: Colors.purple),
+              title: const Text('Edit Switches'),
+              onTap: () {
+                Navigator.pop(context);
+                _showSwitchesEditDialog(device);
               },
             ),
             ListTile(
@@ -150,6 +159,181 @@ class _DevicesScreenState extends State<DevicesScreen> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  void _showSwitchesEditDialog(DeviceModel device) {
+    const commonIcons = [
+      Icons.lightbulb_outline,
+      Icons.air_outlined,
+      Icons.wb_sunny_outlined,
+      Icons.brightness_7,
+      Icons.power_settings_new,
+      Icons.videogame_asset_outlined,
+      Icons.tv_outlined,
+      Icons.water_drop_outlined,
+      Icons.thermostat,
+      Icons.door_front_door,
+      Icons.door_sliding,
+      Icons.blinds_outlined,
+      Icons.lock_outline,
+      Icons.home_outlined,
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Switches'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: device.switches.length,
+            itemBuilder: (context, index) {
+              final switchModel = device.switches[index];
+              return ListTile(
+                title: Text(switchModel.label),
+                subtitle: Text('Type: ${switchModel.type}'),
+                trailing: Icon(
+                  IconData(
+                    int.tryParse(switchModel.icon) ??
+                        Icons.lightbulb_outline.codePoint,
+                    fontFamily: 'MaterialIcons',
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditSwitchDialog(device, index, switchModel, commonIcons);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditSwitchDialog(DeviceModel device, int switchIndex,
+      SwitchModel switchModel, List<IconData> commonIcons) {
+    final labelController = TextEditingController(text: switchModel.label);
+    int selectedIconCode =
+        int.tryParse(switchModel.icon) ?? Icons.lightbulb_outline.codePoint;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Edit Switch'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: labelController,
+                  decoration: const InputDecoration(
+                    labelText: 'Switch Label',
+                    border: OutlineInputBorder(),
+                    hintText: 'e.g., Bedroom Light',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Select Icon',
+                  style: Theme.of(dialogContext).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: commonIcons.map((icon) {
+                    final isSelected = icon.codePoint == selectedIconCode;
+                    return GestureDetector(
+                      onTap: () {
+                        setDialogState(() {
+                          selectedIconCode = icon.codePoint;
+                        });
+                      },
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Theme.of(dialogContext)
+                                  .colorScheme
+                                  .primaryContainer
+                              : Theme.of(dialogContext)
+                                  .colorScheme
+                                  .surfaceContainer,
+                          borderRadius: BorderRadius.circular(12),
+                          border: isSelected
+                              ? Border.all(
+                                  color: Theme.of(dialogContext)
+                                      .colorScheme
+                                      .primary,
+                                  width: 2,
+                                )
+                              : null,
+                        ),
+                        child: Icon(
+                          icon,
+                          color: isSelected
+                              ? Theme.of(dialogContext).colorScheme.primary
+                              : Theme.of(dialogContext)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                          size: 28,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await _firestoreService.updateSwitch(
+                    uid,
+                    device.deviceId,
+                    switchIndex,
+                    labelController.text.trim(),
+                    selectedIconCode.toString(),
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(dialogContext);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Switch updated successfully'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
         ),
       ),
     );
@@ -291,6 +475,11 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get MQTT provider for device online status
+    final mqtt = MqttProvider.of(context);
+    final macId = device.macId ?? '';
+    final isDeviceOnline = macId.isNotEmpty ? mqtt.isDeviceOnline(macId) : false;
+
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -318,12 +507,12 @@ class _DeviceCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Online status chip
+                // Online status chip - using MQTT online status
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: device.isOnline
+                    color: isDeviceOnline
                         ? Colors.green.withOpacity(0.12)
                         : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(20),
@@ -336,17 +525,17 @@ class _DeviceCard extends StatelessWidget {
                         height: 6,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: device.isOnline
+                          color: isDeviceOnline
                               ? Colors.green
                               : cs.onSurface.withOpacity(0.3),
                         ),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        device.isOnline ? 'Online' : 'Offline',
+                        isDeviceOnline ? 'Online' : 'Offline',
                         style: TextStyle(
                           fontSize: 11,
-                          color: device.isOnline
+                          color: isDeviceOnline
                               ? Colors.green
                               : cs.onSurface.withOpacity(0.4),
                         ),
@@ -389,6 +578,11 @@ class _DeviceCard extends StatelessWidget {
       }
     }
 
+    // Get MQTT provider for device online status
+    final mqtt = MqttProvider.of(context);
+    final macId = device.macId ?? '';
+    final isDeviceOnline = macId.isNotEmpty ? mqtt.isDeviceOnline(macId) : false;
+
     return Column(
       children: [
         // Toggle switches in 2-column grid
@@ -417,7 +611,7 @@ class _DeviceCard extends StatelessWidget {
                 switchIndex: switchIndex,
                 switchModel: device.switches[switchIndex],
                 compact: true,
-                isDeviceOnline: device.isOnline,
+                isDeviceOnline: isDeviceOnline,
               );
             },
           ),
@@ -438,7 +632,7 @@ class _DeviceCard extends StatelessWidget {
                   switchIndex: switchIndex,
                   switchModel: device.switches[switchIndex],
                   compact: false,
-                  isDeviceOnline: device.isOnline,
+                  isDeviceOnline: isDeviceOnline,
                 )).toList();
           })(),
         ],

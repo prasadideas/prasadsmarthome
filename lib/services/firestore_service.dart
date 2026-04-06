@@ -148,7 +148,7 @@ class FirestoreService {
       final doc = oldSnapshot.docs.first;
       return (
         docId: doc.id,
-        data: doc.data() as Map<String, dynamic>,
+        data: doc.data(),
         isNewLocation: false
       );
     }
@@ -270,7 +270,7 @@ class FirestoreService {
           List<DeviceModel> oldDevices = oldSnapshot.docs
               .map((doc) => DeviceModel.fromMap(
                     doc.id,
-                    doc.data() as Map<String, dynamic>,
+                    doc.data(),
                   ))
               .toList();
 
@@ -310,7 +310,7 @@ class FirestoreService {
           List<DeviceModel> oldDevices = oldSnapshot.docs
               .map((doc) => DeviceModel.fromMap(
                     doc.id,
-                    doc.data() as Map<String, dynamic>,
+                    doc.data(),
                   ))
               .toList();
 
@@ -457,6 +457,31 @@ class FirestoreService {
       doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
         await _db.collection('devices').doc(deviceId).delete();
+      }
+    }
+  }
+
+  // Update a switch's label and icon
+  Future<void> updateSwitch(
+    String uid,
+    String deviceId,
+    int switchIndex,
+    String newLabel,
+    String newIcon,
+  ) async {
+    var doc = await _devices(uid).doc(deviceId).get();
+    
+    if (doc.exists) {
+      final data = doc.data() as Map<String, dynamic>?;
+      final switches = data?['switches'] as List?;
+      
+      if (switches != null && switchIndex < switches.length) {
+        final switchData = switches[switchIndex] as Map<String, dynamic>;
+        switchData['label'] = newLabel;
+        switchData['icon'] = newIcon;
+        switches[switchIndex] = switchData;
+        
+        await _devices(uid).doc(deviceId).update({'switches': switches});
       }
     }
   }

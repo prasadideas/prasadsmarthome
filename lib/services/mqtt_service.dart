@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore_service.dart';
 
 /// Holds the real-time state of a single switch as seen by the app.
@@ -367,6 +368,11 @@ class MqttService extends ChangeNotifier {
           SwitchState(isOn: isOn, value: value, inProgress: false);
       _stateController.add(Map.from(_states));
       notifyListeners();
+
+      // Mark device as online when we receive status message
+      _lastHeartbeats[macAddress] = DateTime.now();
+      _updateDeviceStatus(macAddress, true);
+      debugPrint('[MQTT] Status from $macAddress switch $switchIndex: ${isOn ? 'ON' : 'OFF'}');
     } catch (e) {
       debugPrint('[MQTT] Failed to parse status: $e  raw=$raw');
     }
@@ -449,6 +455,79 @@ class MqttService extends ChangeNotifier {
       } else {
         debugPrint('[MQTT] Failed to update device status: $e');
       }
+    }
+  }
+
+  // ── Save/Load preferences ──────────────────────────────────
+
+  static const String _heartbeatIntervalKey = 'mqtt_heartbeat_interval';
+  static const String _offlineTimeoutKey = 'mqtt_offline_timeout';
+
+  /// Save broker settings to SharedPreferences
+  Future<void> saveBrokerSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('mqtt_broker_host', brokerHost);
+      await prefs.setInt('mqtt_broker_port', brokerPort);
+      await prefs.setString('mqtt_api_key', apiKey);
+      await prefs.setBool('mqtt_use_tls', useTls);
+      debugPrint('[MQTT] Broker settings saved to preferences');
+    } catch (e) {
+      debugPrint('[MQTT] Failed to save broker settings: $e');
+    }
+  }
+
+  /// Save heartbeat settings to SharedPreferences
+  Future<void> saveHeartbeatSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_heartbeatIntervalKey, heartbeatInterval.inSeconds);
+      await prefs.setInt(_offlineTimeoutKey, offlineTimeout.inSeconds);
+      debugPrint('[MQTT] Heartbeat settings saved to preferences');
+    } catch (e) {
+      debugPrint('[MQTT] Failed to save heartbeat settings: $e');
+    }
+  }
+
+  /// Load heartbeat settings from SharedPreferences
+  static Future<Map<String, int>> loadHeartbeatSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final interval = prefs.getInt(_heartbeatIntervalKey) ?? 30;
+      final timeout = prefs.getInt(_offlineTimeoutKey) ?? 60;
+      debugPrint('[MQTT] Loaded heartbeat settings: interval=$interval, timeout=$timeout');
+      return {'interval': interval, 'timeout': timeout};
+    } catch (e) {
+      debugPrint('[MQTT] Failed to load heartbeat settings: $e');
+      return {'interval': 30, 'timeout': 60};
+    }
+  }
+
+  /// Load broker and heartbeat settings from SharedPreferences
+  /// Returns a Map with keys: host, port, apiKey, useT ls, interval, timeout
+  static Future<Map<String, dynamic>> loadAllSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final settings = {
+        'host': prefs.getString('mqtt_broker_host') ?? 'test.mosquitto.org',
+        'port': prefs.getInt('mqtt_broker_port') ?? 1883,
+        'apiKey': prefs.getString('mqtt_api_key') ?? 'smarthome_default',
+        'useTls': prefs.getBool('mqtt_use_tls') ?? false,
+        'interval': prefs.getInt(_heartbeatIntervalKey) ?? 30,
+        'timeout': prefs.getInt(_offlineTimeoutKey) ?? 60,
+      };
+      debugPrint('[MQTT] Loaded all settings: $settings');
+      return settings;
+    } catch (e) {
+      debugPrint('[MQTT] Failed to load settings: $e');
+      return {
+        'host': 'test.mosquitto.org',
+        'port': 1883,
+        'apiKey': 'smarthome_default',
+        'useTls': false,
+        'interval': 30,
+        'timeout': 60,
+      };
     }
   }
 
