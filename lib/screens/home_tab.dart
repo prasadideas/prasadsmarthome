@@ -616,24 +616,18 @@ class _DeviceDotRow extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Device name label
-          SizedBox(
-            width: 90,
-            child: Text(
-              device.deviceName,
-              style: TextStyle(
-                fontSize: 11,
-                color: cs.onSurface.withOpacity(0.55),
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
+          Text(
+            device.deviceName,
+            style: TextStyle(
+              fontSize: 11,
+              color: cs.onSurface.withOpacity(0.55),
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(width: 8),
-          // Dots for each switch in this device
+          const SizedBox(height: 6),
           Wrap(
             spacing: 5,
             runSpacing: 5,

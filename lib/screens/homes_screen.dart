@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_model.dart';
@@ -26,9 +28,17 @@ class _HomesScreenState extends State<HomesScreen> {
     _loadFavourite();
   }
 
+  Future<void> _seedDeviceTemplates() async {
+    try {
+      await _firestoreService.seedDeviceTemplates();
+    } catch (error) {
+      debugPrint('Device template sync failed: $error');
+    }
+  }
+
   // Load favourite home and navigate directly if set
   Future<void> _loadFavourite() async {
-    
+    //unawaited(_seedDeviceTemplates());
     final userData = await _firestoreService.getUser(uid);
     if (!mounted) return;
     setState(() {

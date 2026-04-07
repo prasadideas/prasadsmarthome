@@ -1,6 +1,6 @@
 {
   "_config": {
-    "broker_host": "test.mosquitto.org",
+    "broker_host": "broker.emqx.io",
     "broker_port": 1883,
     "api_key": "smarthome_default",
     "heartbeat_interval": 5
@@ -13,7 +13,7 @@
       {
         "label": "Switch 1",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       }
     ],
@@ -27,7 +27,7 @@
       {
         "label": "Switch 1",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
@@ -47,20 +47,20 @@
       {
         "label": "Switch 1",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 2",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Fan",
         "type": "fan",
-        "isOn": true,
-        "value": 1.0
+        "isOn": false,
+        "value": 0.0
       }
     ],
     "sensors": []
@@ -79,31 +79,31 @@
       {
         "label": "Switch 2",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 3",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 4",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 5",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 6",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
@@ -115,7 +115,7 @@
       {
         "label": "Switch 8",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
@@ -133,31 +133,31 @@
       {
         "label": "Switch 11",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 12",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 13",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 14",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {
         "label": "Switch 15",
         "type": "toggle",
-        "isOn": true,
+        "isOn": false,
         "value": 0.0
       },
       {

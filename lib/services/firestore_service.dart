@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/home_model.dart';
@@ -6,85 +8,9 @@ import '../models/device_model.dart';
 import '../models/user_model.dart';
 import '../models/device_template.dart';
 import '../models/scene_model.dart';
-import 'firestore_metrics.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirestoreMetrics _metrics = FirestoreMetrics.instance;
-
-  void _recordOneTimeRead(String source, int count) {
-    _metrics.recordOneTimeRead(source, count: count);
-  }
-
-  void _recordListenerRead(String source, int count) {
-    _metrics.recordListenerRead(source, count: count);
-  }
-
-  void _recordWrite(String source, [int count = 1]) {
-    _metrics.recordWrite(source, count: count);
-  }
-
-  Future<DocumentSnapshot> _trackedDocGet(
-    DocumentReference ref,
-    String source,
-  ) async {
-    final doc = await ref.get();
-    _recordOneTimeRead(source, 1);
-    return doc;
-  }
-
-  Future<QuerySnapshot> _trackedQueryGet(Query query, String source) async {
-    final snapshot = await query.get();
-    _recordOneTimeRead(source, snapshot.docs.length);
-    return snapshot;
-  }
-
-  Future<DocumentReference> _trackedAdd(
-    CollectionReference collection,
-    Map<String, dynamic> data,
-    String source,
-  ) async {
-    final ref = await collection.add(data);
-    _recordWrite(source);
-    return ref;
-  }
-
-  Future<void> _trackedSet(
-    DocumentReference ref,
-    Map<String, dynamic> data,
-    String source, {
-    SetOptions? options,
-  }) async {
-    if (options != null) {
-      await ref.set(data, options);
-    } else {
-      await ref.set(data);
-    }
-    _recordWrite(source);
-  }
-
-  Future<void> _trackedUpdate(
-    DocumentReference ref,
-    Map<String, dynamic> data,
-    String source,
-  ) async {
-    await ref.update(data);
-    _recordWrite(source);
-  }
-
-  Future<void> _trackedDelete(DocumentReference ref, String source) async {
-    await ref.delete();
-    _recordWrite(source);
-  }
-
-  Future<void> _trackedBatchCommit(
-    WriteBatch batch,
-    String source,
-    int operations,
-  ) async {
-    await batch.commit();
-    _recordWrite(source, operations);
-  }
 
   // ── Shortcuts to collection paths ──────────────────────────
 
@@ -101,49 +27,39 @@ class FirestoreService {
 
   // Call this right after signup to create the user document
   Future<void> createUser(UserModel user) async {
-    await _trackedSet(
-      _db.collection('users').doc(user.uid),
-      user.toMap(),
-      'createUser',
-    );
+    await _db.collection('users').doc(user.uid).set(user.toMap());
   }
 
   // Get user document once (to read favouriteHomeId)
   Future<Map<String, dynamic>?> getUser(String uid) async {
-    final doc = await _trackedDocGet(
-      _db.collection('users').doc(uid),
-      'getUser',
-    );
-    return doc.data() as Map<String, dynamic>?;
+    final doc = await _db.collection('users').doc(uid).get();
+    return doc.data();
   }
 
   Future<void> setUserThemeMode(String uid, String themeMode) async {
-    await _trackedUpdate(_db.collection('users').doc(uid), {
-      'themeMode': themeMode,
-    }, 'setUserThemeMode');
+    await _db.collection('users').doc(uid).update({'themeMode': themeMode});
   }
 
   // ── Homes ──────────────────────────────────────────────────
 
   Future<void> addHome(String uid, HomeModel home) async {
-    await _trackedAdd(_homes(uid), home.toMap(), 'addHome');
+    await _homes(uid).add(home.toMap());
   }
 
   // Stream — UI auto-updates when homes change
   Stream<List<HomeModel>> streamHomes(String uid) {
-    return _homes(uid).snapshots().map((snap) {
-      _recordListenerRead('streamHomes', snap.docs.length);
-      return snap.docs
+    return _homes(uid).snapshots().map(
+      (snap) => snap.docs
           .map(
             (doc) =>
                 HomeModel.fromMap(doc.id, doc.data() as Map<String, dynamic>),
           )
-          .toList();
-    });
+          .toList(),
+    );
   }
 
   Future<void> deleteHome(String uid, String homeId) async {
-    await _trackedDelete(_homes(uid).doc(homeId), 'deleteHome');
+    await _homes(uid).doc(homeId).delete();
   }
 
   // Update home name
@@ -153,39 +69,35 @@ class FirestoreService {
     String newName,
     String newAddress,
   ) async {
-    await _trackedUpdate(_homes(uid).doc(homeId), {
-      'homeName': newName,
-      'address': newAddress,
-    }, 'updateHome');
+    await _homes(
+      uid,
+    ).doc(homeId).update({'homeName': newName, 'address': newAddress});
   }
 
   // Save favourite homeId into the user document
   Future<void> setFavouriteHome(String uid, String homeId) async {
-    await _trackedUpdate(_db.collection('users').doc(uid), {
-      'favouriteHomeId': homeId,
-    }, 'setFavouriteHome');
+    await _db.collection('users').doc(uid).update({'favouriteHomeId': homeId});
   }
 
   // ── Rooms ──────────────────────────────────────────────────
 
   Future<void> addRoom(String uid, String homeId, RoomModel room) async {
-    await _trackedAdd(_rooms(uid, homeId), room.toMap(), 'addRoom');
+    await _rooms(uid, homeId).add(room.toMap());
   }
 
   Stream<List<RoomModel>> streamRooms(String uid, String homeId) {
-    return _rooms(uid, homeId).snapshots().map((snap) {
-      _recordListenerRead('streamRooms', snap.docs.length);
-      return snap.docs
+    return _rooms(uid, homeId).snapshots().map(
+      (snap) => snap.docs
           .map(
             (doc) =>
                 RoomModel.fromMap(doc.id, doc.data() as Map<String, dynamic>),
           )
-          .toList();
-    });
+          .toList(),
+    );
   }
 
   Future<void> deleteRoom(String uid, String homeId, String roomId) async {
-    await _trackedDelete(_rooms(uid, homeId).doc(roomId), 'deleteRoom');
+    await _rooms(uid, homeId).doc(roomId).delete();
   }
 
   Future<void> updateRoom(
@@ -195,20 +107,16 @@ class FirestoreService {
     String newName,
     String newIcon,
   ) async {
-    await _trackedUpdate(_rooms(uid, homeId).doc(roomId), {
-      'roomName': newName,
-      'icon': newIcon,
-    }, 'updateRoom');
+    await _rooms(
+      uid,
+      homeId,
+    ).doc(roomId).update({'roomName': newName, 'icon': newIcon});
   }
 
   // ── Devices ────────────────────────────────────────────────
 
   Future<String> addDevice(String uid, DeviceModel device) async {
-    final ref = await _trackedAdd(
-      _devices(uid),
-      device.toMap(uid),
-      'addDevice',
-    );
+    final ref = await _devices(uid).add(device.toMap(uid));
     return ref.id;
   }
 
@@ -216,10 +124,9 @@ class FirestoreService {
   Future<({String? docId, Map<String, dynamic>? data, bool isNewLocation})?>
   _findDeviceByMac(String uid, String macAddress) async {
     // First, try new location
-    final newSnapshot = await _trackedQueryGet(
-      _devices(uid).where('macId', isEqualTo: macAddress).limit(1),
-      '_findDeviceByMac.userDevices',
-    );
+    final newSnapshot = await _devices(
+      uid,
+    ).where('macId', isEqualTo: macAddress).limit(1).get();
 
     if (newSnapshot.docs.isNotEmpty) {
       final doc = newSnapshot.docs.first;
@@ -231,22 +138,16 @@ class FirestoreService {
     }
 
     // Try old location
-    final oldSnapshot = await _trackedQueryGet(
-      _db
-          .collection('devices')
-          .where('macId', isEqualTo: macAddress)
-          .where('ownedBy', isEqualTo: uid)
-          .limit(1),
-      '_findDeviceByMac.legacyDevices',
-    );
+    final oldSnapshot = await _db
+        .collection('devices')
+        .where('macId', isEqualTo: macAddress)
+        .where('ownedBy', isEqualTo: uid)
+        .limit(1)
+        .get();
 
     if (oldSnapshot.docs.isNotEmpty) {
       final doc = oldSnapshot.docs.first;
-      return (
-        docId: doc.id,
-        data: doc.data() as Map<String, dynamic>?,
-        isNewLocation: false,
-      );
+      return (docId: doc.id, data: doc.data(), isNewLocation: false);
     }
 
     return null;
@@ -264,16 +165,15 @@ class FirestoreService {
       final (docId: docId, data: _, isNewLocation: isNewLocation) = result;
 
       if (isNewLocation) {
-        await _trackedUpdate(_devices(uid).doc(docId), {
+        await _devices(uid).doc(docId).update({
           'lastHeartbeat': FieldValue.serverTimestamp(),
           'isOnline': true,
-        }, 'updateDeviceHeartbeatByMac');
+        });
       } else {
-        await _trackedUpdate(
-          _db.collection('devices').doc(docId),
-          {'lastHeartbeat': FieldValue.serverTimestamp(), 'isOnline': true},
-          'updateDeviceHeartbeatByMac.legacy',
-        );
+        await _db.collection('devices').doc(docId).update({
+          'lastHeartbeat': FieldValue.serverTimestamp(),
+          'isOnline': true,
+        });
       }
     } catch (e) {
       // Silently handle errors - device might be deleted
@@ -294,13 +194,9 @@ class FirestoreService {
       final (docId: docId, data: _, isNewLocation: isNewLocation) = result;
 
       if (isNewLocation) {
-        await _trackedUpdate(_devices(uid).doc(docId), {
-          'isOnline': false,
-        }, 'markDeviceOfflineByMac');
+        await _devices(uid).doc(docId).update({'isOnline': false});
       } else {
-        await _trackedUpdate(_db.collection('devices').doc(docId), {
-          'isOnline': false,
-        }, 'markDeviceOfflineByMac.legacy');
+        await _db.collection('devices').doc(docId).update({'isOnline': false});
       }
     } catch (e) {
       debugPrint(
@@ -311,52 +207,38 @@ class FirestoreService {
 
   // Update device heartbeat (try new location first, fallback to old)
   Future<void> updateDeviceHeartbeat(String uid, String deviceId) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'updateDeviceHeartbeat.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
-      await _trackedUpdate(_devices(uid).doc(deviceId), {
+      await _devices(uid).doc(deviceId).update({
         'lastHeartbeat': FieldValue.serverTimestamp(),
         'isOnline': true,
-      }, 'updateDeviceHeartbeat');
+      });
     } else {
       // Try old location
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'updateDeviceHeartbeat.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
-        await _trackedUpdate(_db.collection('devices').doc(deviceId), {
+        await _db.collection('devices').doc(deviceId).update({
           'lastHeartbeat': FieldValue.serverTimestamp(),
           'isOnline': true,
-        }, 'updateDeviceHeartbeat.legacy');
+        });
       }
     }
   }
 
   // Mark device as offline (try new location first, fallback to old)
   Future<void> markDeviceOffline(String uid, String deviceId) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'markDeviceOffline.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
-      await _trackedUpdate(_devices(uid).doc(deviceId), {
-        'isOnline': false,
-      }, 'markDeviceOffline');
+      await _devices(uid).doc(deviceId).update({'isOnline': false});
     } else {
       // Try old location
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'markDeviceOffline.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
-        await _trackedUpdate(_db.collection('devices').doc(deviceId), {
+        await _db.collection('devices').doc(deviceId).update({
           'isOnline': false,
-        }, 'markDeviceOffline.legacy');
+        });
       }
     }
   }
@@ -364,8 +246,6 @@ class FirestoreService {
   // Stream all devices owned by this user (from new location + legacy location)
   Stream<List<DeviceModel>> streamDevices(String uid) {
     return _devices(uid).snapshots().asyncMap((newSnapshot) async {
-      _recordListenerRead('streamDevices.live', newSnapshot.docs.length);
-
       // Get devices from new location
       List<DeviceModel> newDevices = newSnapshot.docs
           .map(
@@ -375,16 +255,13 @@ class FirestoreService {
           .toList();
 
       // Also get devices from old global location that belong to this user
-      final oldSnapshot = await _trackedQueryGet(
-        _db.collection('devices').where('ownedBy', isEqualTo: uid),
-        'streamDevices.legacy',
-      );
+      final oldSnapshot = await _db
+          .collection('devices')
+          .where('ownedBy', isEqualTo: uid)
+          .get();
 
       List<DeviceModel> oldDevices = oldSnapshot.docs
-          .map(
-            (doc) =>
-                DeviceModel.fromMap(doc.id, doc.data() as Map<String, dynamic>),
-          )
+          .map((doc) => DeviceModel.fromMap(doc.id, doc.data()))
           .toList();
 
       // Combine and deduplicate
@@ -406,8 +283,6 @@ class FirestoreService {
     ).where('linkedRoom', isEqualTo: roomId).snapshots().asyncMap((
       newSnapshot,
     ) async {
-      _recordListenerRead('streamDevicesInRoom.live', newSnapshot.docs.length);
-
       // Get devices from new location
       List<DeviceModel> newDevices = newSnapshot.docs
           .map(
@@ -417,19 +292,14 @@ class FirestoreService {
           .toList();
 
       // Also get devices from old global location with roomRef matching
-      final oldSnapshot = await _trackedQueryGet(
-        _db
-            .collection('devices')
-            .where('ownedBy', isEqualTo: uid)
-            .where('linkedRoom', isEqualTo: roomId),
-        'streamDevicesInRoom.legacy',
-      );
+      final oldSnapshot = await _db
+          .collection('devices')
+          .where('ownedBy', isEqualTo: uid)
+          .where('linkedRoom', isEqualTo: roomId)
+          .get();
 
       List<DeviceModel> oldDevices = oldSnapshot.docs
-          .map(
-            (doc) =>
-                DeviceModel.fromMap(doc.id, doc.data() as Map<String, dynamic>),
-          )
+          .map((doc) => DeviceModel.fromMap(doc.id, doc.data()))
           .toList();
 
       // Combine and deduplicate
@@ -451,17 +321,11 @@ class FirestoreService {
     int switchIndex,
     bool newValue,
   ) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'toggleSwitch.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     // If not found in new location, try old location
     if (!doc.exists) {
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'toggleSwitch.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (!doc.exists) return;
     }
 
@@ -484,13 +348,11 @@ class FirestoreService {
 
     // Update in the location where it was found
     if (doc.reference.path.startsWith('users/$uid')) {
-      await _trackedUpdate(_devices(uid).doc(deviceId), {
-        'switches': switches,
-      }, 'toggleSwitch');
+      await _devices(uid).doc(deviceId).update({'switches': switches});
     } else {
-      await _trackedUpdate(_db.collection('devices').doc(deviceId), {
+      await _db.collection('devices').doc(deviceId).update({
         'switches': switches,
-      }, 'toggleSwitch.legacy');
+      });
     }
   }
 
@@ -500,10 +362,9 @@ class FirestoreService {
     String roomId, {
     bool isOn = false,
   }) async {
-    final querySnap = await _trackedQueryGet(
-      _devices(uid).where('linkedRoom', isEqualTo: roomId),
-      'setRoomAllSwitchesOff.query',
-    );
+    final querySnap = await _devices(
+      uid,
+    ).where('linkedRoom', isEqualTo: roomId).get();
 
     final batch = FirebaseFirestore.instance.batch();
 
@@ -531,11 +392,7 @@ class FirestoreService {
     }
 
     if (querySnap.docs.isNotEmpty) {
-      await _trackedBatchCommit(
-        batch,
-        'setRoomAllSwitchesOff',
-        querySnap.docs.length,
-      );
+      await batch.commit();
     }
   }
 
@@ -546,75 +403,51 @@ class FirestoreService {
     String? roomId,
     String? homeId,
   ) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'assignDeviceToRoom.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
       // Update in new location
-      await _trackedUpdate(_devices(uid).doc(deviceId), {
-        'linkedRoom': roomId,
-        'linkedHome': homeId,
-      }, 'assignDeviceToRoom');
+      await _devices(
+        uid,
+      ).doc(deviceId).update({'linkedRoom': roomId, 'linkedHome': homeId});
     } else {
       // Try old location
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'assignDeviceToRoom.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
-        await _trackedUpdate(_db.collection('devices').doc(deviceId), {
+        await _db.collection('devices').doc(deviceId).update({
           'linkedRoom': roomId,
           'linkedHome': homeId,
-        }, 'assignDeviceToRoom.legacy');
+        });
       }
     }
   }
 
   // Rename device (try new location first, fallback to old)
   Future<void> updateDevice(String uid, String deviceId, String newName) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'updateDevice.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
-      await _trackedUpdate(_devices(uid).doc(deviceId), {
-        'deviceName': newName,
-      }, 'updateDevice');
+      await _devices(uid).doc(deviceId).update({'deviceName': newName});
     } else {
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'updateDevice.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
-        await _trackedUpdate(_db.collection('devices').doc(deviceId), {
+        await _db.collection('devices').doc(deviceId).update({
           'deviceName': newName,
-        }, 'updateDevice.legacy');
+        });
       }
     }
   }
 
   // Delete device (try new location first, fallback to old)
   Future<void> deleteDevice(String uid, String deviceId) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'deleteDevice.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
-      await _trackedDelete(_devices(uid).doc(deviceId), 'deleteDevice');
+      await _devices(uid).doc(deviceId).delete();
     } else {
-      doc = await _trackedDocGet(
-        _db.collection('devices').doc(deviceId),
-        'deleteDevice.legacyDoc',
-      );
+      doc = await _db.collection('devices').doc(deviceId).get();
       if (doc.exists) {
-        await _trackedDelete(
-          _db.collection('devices').doc(deviceId),
-          'deleteDevice.legacy',
-        );
+        await _db.collection('devices').doc(deviceId).delete();
       }
     }
   }
@@ -627,10 +460,7 @@ class FirestoreService {
     String newLabel,
     String newIcon,
   ) async {
-    var doc = await _trackedDocGet(
-      _devices(uid).doc(deviceId),
-      'updateSwitch.userDoc',
-    );
+    var doc = await _devices(uid).doc(deviceId).get();
 
     if (doc.exists) {
       final data = doc.data() as Map<String, dynamic>?;
@@ -642,9 +472,7 @@ class FirestoreService {
         switchData['icon'] = newIcon;
         switches[switchIndex] = switchData;
 
-        await _trackedUpdate(_devices(uid).doc(deviceId), {
-          'switches': switches,
-        }, 'updateSwitch');
+        await _devices(uid).doc(deviceId).update({'switches': switches});
       }
     }
   }
@@ -656,9 +484,9 @@ class FirestoreService {
     String roomId,
     String deviceId,
   ) async {
-    await _trackedUpdate(_rooms(uid, homeId).doc(roomId), {
+    await _rooms(uid, homeId).doc(roomId).update({
       'deviceRefs': FieldValue.arrayUnion([deviceId]),
-    }, 'addDeviceRefToRoom');
+    });
   }
 
   // Remove device ref from room
@@ -668,9 +496,9 @@ class FirestoreService {
     String roomId,
     String deviceId,
   ) async {
-    await _trackedUpdate(_rooms(uid, homeId).doc(roomId), {
+    await _rooms(uid, homeId).doc(roomId).update({
       'deviceRefs': FieldValue.arrayRemove([deviceId]),
-    }, 'removeDeviceRefFromRoom');
+    });
   }
 
   // Admin only — reassign device to another user
@@ -679,29 +507,23 @@ class FirestoreService {
     String deviceId,
     String newUserId,
   ) async {
-    final doc = await _trackedDocGet(
-      _devices(oldUid).doc(deviceId),
-      'reassignDevice.sourceDoc',
-    );
+    final doc = await _devices(oldUid).doc(deviceId).get();
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return;
 
     final oldOwner = data['ownedBy'];
 
     // Copy device to new user's collection
-    await _trackedSet(_devices(newUserId).doc(deviceId), {
+    await _devices(newUserId).doc(deviceId).set({
       ...data,
       'ownedBy': newUserId,
       'linkedRoom': null,
       'linkedHome': null,
       'lastOwnedBy': oldOwner,
-    }, 'reassignDevice.copy');
+    });
 
     // Delete from old user's collection
-    await _trackedDelete(
-      _devices(oldUid).doc(deviceId),
-      'reassignDevice.delete',
-    );
+    await _devices(oldUid).doc(deviceId).delete();
   }
 
   // Stream all active device templates — ordered by display order
@@ -717,8 +539,6 @@ class FirestoreService {
         .orderBy('order')
         .snapshots()
         .map((snap) {
-          _recordListenerRead('streamDeviceTemplates', snap.docs.length);
-
           if (snap.docs.isEmpty) return defaultTemplates;
 
           final remoteTemplates = snap.docs
@@ -749,12 +569,59 @@ class FirestoreService {
 
   Future<void> syncDeviceTemplates() async {
     final templates = _buildDefaultTemplates();
+    final existingSnapshot = await _db.collection('deviceTemplates').get();
+    final existingTemplates = {
+      for (final doc in existingSnapshot.docs) doc.id: doc.data(),
+    };
+
     final batch = _db.batch();
+    var pendingWrites = 0;
+
     for (final t in templates) {
+      final localData = t.toMap();
+      final remoteData = existingTemplates[t.templateId];
+
+      if (remoteData != null &&
+          _templateDocumentsMatch(remoteData, localData)) {
+        continue;
+      }
+
       final ref = _db.collection('deviceTemplates').doc(t.templateId);
-      batch.set(ref, t.toMap(), SetOptions(merge: true));
+      batch.set(ref, localData, SetOptions(merge: true));
+      pendingWrites++;
     }
-    await _trackedBatchCommit(batch, 'syncDeviceTemplates', templates.length);
+
+    if (pendingWrites == 0) return;
+
+    await batch.commit();
+  }
+
+  bool _templateDocumentsMatch(
+    Map<String, dynamic> current,
+    Map<String, dynamic> next,
+  ) {
+    final comparableCurrent = {for (final key in next.keys) key: current[key]};
+
+    return jsonEncode(_normalizeTemplateValue(comparableCurrent)) ==
+        jsonEncode(_normalizeTemplateValue(next));
+  }
+
+  Object? _normalizeTemplateValue(Object? value) {
+    if (value is Map) {
+      final entries = value.entries.toList()
+        ..sort((a, b) => a.key.toString().compareTo(b.key.toString()));
+
+      return {
+        for (final entry in entries)
+          entry.key.toString(): _normalizeTemplateValue(entry.value),
+      };
+    }
+
+    if (value is Iterable) {
+      return value.map(_normalizeTemplateValue).toList(growable: false);
+    }
+
+    return value;
   }
 
   DeviceTemplate _mergeTemplate(
@@ -786,6 +653,27 @@ class FirestoreService {
 
   List<SensorTemplate> _sensorTemplates(List<String> types) {
     return SensorTemplateCatalog.forTypes(types);
+  }
+
+  DeviceTemplate _sensorHubTemplate({
+    required String templateId,
+    required String name,
+    required String description,
+    required int order,
+    required int iconCode,
+    required List<String> sensors,
+  }) {
+    return DeviceTemplate(
+      templateId: templateId,
+      name: name,
+      description: description,
+      category: 'Sensor Hub',
+      iconCode: iconCode,
+      order: order,
+      isActive: true,
+      switches: const [],
+      sensors: _sensorTemplates(sensors),
+    );
   }
 
   List<DeviceTemplate> _buildDefaultTemplates() {
@@ -864,7 +752,7 @@ class FirestoreService {
             iconCode: Icons.lightbulb_outline.codePoint,
           ),
         ],
-        sensors: _sensorTemplates(['power']),
+        sensors: _sensorTemplates(['power', 'energy']),
       ),
       DeviceTemplate(
         templateId: 'sw_6',
@@ -912,7 +800,7 @@ class FirestoreService {
             iconCode: Icons.lightbulb_outline.codePoint,
           ),
         ],
-        sensors: _sensorTemplates(['power', 'voltage']),
+        sensors: _sensorTemplates(['power', 'voltage', 'energy']),
       ),
       DeviceTemplate(
         templateId: 'sw_2_fan',
@@ -1164,7 +1052,7 @@ class FirestoreService {
             iconCode: Icons.lightbulb_outline.codePoint,
           ),
         ),
-        sensors: _sensorTemplates(['power', 'voltage', 'current']),
+        sensors: _sensorTemplates(['power', 'voltage', 'current', 'energy']),
       ),
       DeviceTemplate(
         templateId: 'sw_12',
@@ -1183,7 +1071,7 @@ class FirestoreService {
             iconCode: Icons.lightbulb_outline.codePoint,
           ),
         ),
-        sensors: _sensorTemplates(['power', 'voltage', 'current']),
+        sensors: _sensorTemplates(['power', 'voltage', 'current', 'energy']),
       ),
       DeviceTemplate(
         templateId: 'sw_16',
@@ -1202,7 +1090,85 @@ class FirestoreService {
             iconCode: Icons.lightbulb_outline.codePoint,
           ),
         ),
-        sensors: _sensorTemplates(['power', 'voltage', 'current']),
+        sensors: _sensorTemplates(['power', 'voltage', 'current', 'energy']),
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_climate',
+        name: 'Climate multi-sensor',
+        description: 'Indoor climate, pressure, CO2 and air quality',
+        order: 14,
+        iconCode: Icons.thermostat.codePoint,
+        sensors: [
+          'temperature',
+          'humidity',
+          'pressure',
+          'co2',
+          'voc',
+          'pm25',
+          'air-quality',
+        ],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_entry',
+        name: 'Entry sensor',
+        description: 'Door, motion and occupancy monitoring',
+        order: 15,
+        iconCode: Icons.sensor_door.codePoint,
+        sensors: ['contact', 'motion', 'occupancy', 'vibration', 'battery'],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_safety',
+        name: 'Safety monitor',
+        description: 'Smoke, gas, flame and leak alerts',
+        order: 16,
+        iconCode: Icons.security.codePoint,
+        sensors: ['smoke', 'gas', 'flame', 'water-leak', 'battery'],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_utility',
+        name: 'Energy meter',
+        description: 'Electrical load and consumption tracking',
+        order: 17,
+        iconCode: Icons.electric_meter.codePoint,
+        sensors: ['power', 'voltage', 'current', 'energy'],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_water',
+        name: 'Water tank monitor',
+        description: 'Water level and leak detection',
+        order: 18,
+        iconCode: Icons.waves.codePoint,
+        sensors: ['water-level', 'water-leak', 'battery'],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_weather',
+        name: 'Weather station',
+        description: 'Outdoor light, rain, wind and UV tracking',
+        order: 19,
+        iconCode: Icons.wb_sunny_outlined.codePoint,
+        sensors: [
+          'temperature',
+          'humidity',
+          'pressure',
+          'light-level',
+          'uv-index',
+          'rain',
+          'wind-speed',
+        ],
+      ),
+      _sensorHubTemplate(
+        templateId: 'sensor_garden',
+        name: 'Garden monitor',
+        description: 'Soil moisture and ambient garden conditions',
+        order: 20,
+        iconCode: Icons.grass.codePoint,
+        sensors: [
+          'soil-moisture',
+          'temperature',
+          'humidity',
+          'light-level',
+          'rain',
+        ],
       ),
     ];
   }
@@ -1212,24 +1178,23 @@ class FirestoreService {
       _db.collection('users').doc(uid).collection('scenes');
 
   Future<String> addScene(String uid, SceneModel scene) async {
-    final ref = await _trackedAdd(_scenes(uid), scene.toMap(), 'addScene');
+    final ref = await _scenes(uid).add(scene.toMap());
     return ref.id;
   }
 
   Stream<List<SceneModel>> streamScenes(String uid) {
-    return _scenes(uid).snapshots().map((snap) {
-      _recordListenerRead('streamScenes', snap.docs.length);
-      return snap.docs
+    return _scenes(uid).snapshots().map(
+      (snap) => snap.docs
           .map(
             (doc) =>
                 SceneModel.fromMap(doc.id, doc.data() as Map<String, dynamic>),
           )
-          .toList();
-    });
+          .toList(),
+    );
   }
 
   Future<void> deleteScene(String uid, String sceneId) async {
-    await _trackedDelete(_scenes(uid).doc(sceneId), 'deleteScene');
+    await _scenes(uid).doc(sceneId).delete();
   }
 
   Future<void> updateSceneActive(
@@ -1237,8 +1202,6 @@ class FirestoreService {
     String sceneId,
     bool isActive,
   ) async {
-    await _trackedUpdate(_scenes(uid).doc(sceneId), {
-      'isActive': isActive,
-    }, 'updateSceneActive');
+    await _scenes(uid).doc(sceneId).update({'isActive': isActive});
   }
 }

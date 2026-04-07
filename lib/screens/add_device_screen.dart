@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/device_template.dart';
@@ -58,6 +60,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_syncTemplates());
+  }
+
+  Future<void> _syncTemplates() async {
+    try {
+      await _firestoreService.syncDeviceTemplates();
+    } catch (_) {}
   }
 
   void _selectTemplate(DeviceTemplate template) {
@@ -364,49 +373,59 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         const SizedBox(height: 12),
 
         // Render each switch preview
-        ..._editableSwitches.asMap().entries.map((entry) {
-          final i = entry.key;
-          final sw = entry.value;
-
-          final isFan = sw.type == SwitchType.fan;
-          final isDimmer = sw.type == SwitchType.dimmer;
-
-          if (isFan) {
-            return _FanSwitchPreview(sw: sw, index: i, cs: cs);
-          }
-
-          if (isDimmer) {
-            return _DimmerSwitchPreview(sw: sw, index: i, cs: cs);
-          }
-
-          // Regular toggle
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
+        if (_editableSwitches.isEmpty)
+          Card(
             child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _switchTypeColor(sw.type).withOpacity(0.15),
-                child: Icon(
-                  sw.icon,
-                  color: _switchTypeColor(sw.type),
-                  size: 20,
-                ),
+              leading: Icon(Icons.toggle_off, color: cs.onSurfaceVariant),
+              title: const Text('No switch controls in this template'),
+              subtitle: const Text(
+                'This device can work as a sensor-only node.',
               ),
-              title: Text(
-                sw.label,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              subtitle: Text(
-                sw.type.name[0].toUpperCase() + sw.type.name.substring(1),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurface.withOpacity(0.5),
-                ),
-              ),
-              trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
-              onTap: () => _showEditSwitchDialog(i),
             ),
-          );
-        }),
+          )
+        else
+          ..._editableSwitches.asMap().entries.map((entry) {
+            final i = entry.key;
+            final sw = entry.value;
+
+            final isFan = sw.type == SwitchType.fan;
+            final isDimmer = sw.type == SwitchType.dimmer;
+
+            if (isFan) {
+              return _FanSwitchPreview(sw: sw, index: i, cs: cs);
+            }
+
+            if (isDimmer) {
+              return _DimmerSwitchPreview(sw: sw, index: i, cs: cs);
+            }
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _switchTypeColor(sw.type).withOpacity(0.15),
+                  child: Icon(
+                    sw.icon,
+                    color: _switchTypeColor(sw.type),
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  sw.label,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  sw.type.name[0].toUpperCase() + sw.type.name.substring(1),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
+                onTap: () => _showEditSwitchDialog(i),
+              ),
+            );
+          }),
 
         const SizedBox(height: 16),
 
@@ -751,8 +770,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   }
 
   String _sensorTypeLabel(String type) {
-    final normalized = type.replaceAll('-', ' ');
-    return normalized[0].toUpperCase() + normalized.substring(1);
+    return SensorTemplateCatalog.byType(type).label;
   }
 }
 

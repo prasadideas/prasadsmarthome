@@ -456,6 +456,154 @@ class _RoomsScreenState extends State<RoomsScreen> {
     );
   }
 
+  int _roomColumnCount(double maxWidth) {
+    if (maxWidth >= 1100) return 4;
+    if (maxWidth >= 780) return 3;
+    if (maxWidth >= 360) return 2;
+    return 1;
+  }
+
+  Widget _buildRoomCard(RoomModel room, List<DeviceModel> devices) {
+    final cs = Theme.of(context).colorScheme;
+    final mqtt = MqttProvider.of(context);
+    final roomDevices = devices
+        .where((device) => device.linkedRoom == room.roomId)
+        .toList(growable: false);
+
+    for (final device in roomDevices) {
+      final macId = device.macId;
+      if (macId == null || macId.isEmpty) continue;
+      mqtt.seedStates(macId, device.switches.map((sw) => sw.toMap()).toList());
+    }
+
+    final switchDots = roomDevices
+        .expand<({String label, bool isOn})>((device) {
+          final deviceMac = device.macId ?? '';
+          return device.switches.asMap().entries.map((entry) {
+            final switchIndex = entry.key;
+            final sw = entry.value;
+            final mqttState = deviceMac.isEmpty
+                ? null
+                : mqtt.getState(deviceMac, switchIndex);
+
+            return (label: sw.label, isOn: mqttState?.isOn ?? sw.isOn);
+          });
+        })
+        .toList(growable: false);
+
+    final totalSwitches = switchDots.length;
+    final activeSwitches = switchDots.where((dot) => dot.isOn).length;
+    final totalSensors = roomDevices.fold<int>(
+      0,
+      (count, device) => count + device.sensors.length,
+    );
+
+    Widget roomStatus;
+    if (roomDevices.isEmpty) {
+      roomStatus = const Text(
+        'No devices',
+        style: TextStyle(fontSize: 11, color: Colors.grey),
+      );
+    } else if (switchDots.isEmpty) {
+      final sensorLabel = totalSensors == 1
+          ? '1 sensor available'
+          : '$totalSensors sensors available';
+      roomStatus = Text(
+        sensorLabel,
+        style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+      );
+    } else {
+      roomStatus = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$activeSwitches of $totalSwitches switches on',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: switchDots
+                .map((dot) {
+                  return Tooltip(
+                    message: dot.label,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: dot.isOn
+                            ? cs.primary
+                            : cs.surfaceContainerHighest,
+                        border: Border.all(
+                          color: dot.isOn ? cs.primary : cs.outline,
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                  );
+                })
+                .toList(growable: false),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.power_settings_new, size: 16),
+            label: const Text('Turn off all switches'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(32),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            ),
+            onPressed: () => _confirmTurnOffAll(room.roomId),
+          ),
+        ],
+      );
+    }
+
+    return Card(
+      elevation: 2,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DevicesScreen(home: widget.home, room: room),
+          ),
+        ),
+        onLongPress: () => _showRoomOptions(room),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _getIcon(room.icon),
+                    size: 28,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      room.roomName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              roomStatus,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -604,202 +752,43 @@ class _RoomsScreenState extends State<RoomsScreen> {
             );
           }
 
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              mainAxisExtent: 188,
-            ),
-            itemCount: rooms.length,
-            itemBuilder: (context, index) {
-              final room = rooms[index];
-              return Card(
-                elevation: 2,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          DevicesScreen(home: widget.home, room: room),
-                    ),
-                  ),
-                  onLongPress: () => _showRoomOptions(room),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Room icon + name row
-                        Row(
-                          children: [
-                            Icon(
-                              _getIcon(room.icon),
-                              size: 28,
-                              color: Theme.of(context).primaryColor,
+          return StreamBuilder<List<DeviceModel>>(
+            stream: _firestoreService.streamDevices(_uid),
+            builder: (context, deviceSnapshot) {
+              if (deviceSnapshot.connectionState == ConnectionState.waiting &&
+                  !deviceSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (deviceSnapshot.hasError) {
+                return Center(child: Text('Error: ${deviceSnapshot.error}'));
+              }
+
+              final devices = deviceSnapshot.data ?? const <DeviceModel>[];
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    const spacing = 12.0;
+                    final columnCount = _roomColumnCount(constraints.maxWidth);
+                    final itemWidth =
+                        (constraints.maxWidth - (spacing * (columnCount - 1))) /
+                        columnCount;
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: rooms
+                          .map(
+                            (room) => SizedBox(
+                              width: itemWidth,
+                              child: _buildRoomCard(room, devices),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                room.roomName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Switch status dots — streamed from devices
-                        StreamBuilder<List<DeviceModel>>(
-                          stream: _firestoreService.streamDevices(_uid),
-                          builder: (context, snap) {
-                            if (!snap.hasData) return const SizedBox.shrink();
-                            final mqtt = MqttProvider.of(context);
-
-                            // Only devices in this room
-                            final roomDevices = snap.data!
-                                .where((d) => d.linkedRoom == room.roomId)
-                                .toList();
-                            final cs = Theme.of(context).colorScheme;
-
-                            if (roomDevices.isEmpty) {
-                              return const Text(
-                                'No devices',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              );
-                            }
-
-                            final switchDots = roomDevices
-                                .expand((device) {
-                                  final deviceMac = device.macId ?? '';
-                                  return device.switches.asMap().entries.map((
-                                    entry,
-                                  ) {
-                                    final switchIndex = entry.key;
-                                    final sw = entry.value;
-                                    final mqttState = deviceMac.isEmpty
-                                        ? null
-                                        : mqtt.getState(deviceMac, switchIndex);
-
-                                    return {
-                                      'label': sw.label,
-                                      'isOn': mqttState?.isOn ?? sw.isOn,
-                                    };
-                                  });
-                                })
-                                .toList(growable: false);
-
-                            final totalSwitches = switchDots.length;
-                            final activeSwitches = switchDots
-                                .where((dot) => dot['isOn'] == true)
-                                .length;
-                            final visibleDots = switchDots.take(8).toList();
-                            final hiddenDots =
-                                totalSwitches - visibleDots.length;
-
-                            for (final device in roomDevices) {
-                              final macId = device.macId;
-                              if (macId == null || macId.isEmpty) continue;
-                              mqtt.seedStates(
-                                macId,
-                                device.switches
-                                    .map((sw) => sw.toMap())
-                                    .toList(),
-                              );
-                            }
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  '$activeSwitches of $totalSwitches switches on',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 4,
-                                  runSpacing: 4,
-                                  children: [
-                                    ...visibleDots.map((dot) {
-                                      final isOn = dot['isOn'] == true;
-                                      return Tooltip(
-                                        message: dot['label'] as String,
-                                        child: Container(
-                                          width: 10,
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: isOn
-                                                ? cs.primary
-                                                : cs.surfaceContainerHighest,
-                                            border: Border.all(
-                                              color: isOn
-                                                  ? cs.primary
-                                                  : cs.outline,
-                                              width: 0.5,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                    if (hiddenDots > 0)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: cs.surfaceContainerHighest,
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '+$hiddenDots',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            color: cs.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                OutlinedButton.icon(
-                                  icon: const Icon(
-                                    Icons.power_settings_new,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Turn off all switches'),
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(32),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                      horizontal: 12,
-                                    ),
-                                  ),
-                                  onPressed: () =>
-                                      _confirmTurnOffAll(room.roomId),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+                          )
+                          .toList(growable: false),
+                    );
+                  },
                 ),
               );
             },
